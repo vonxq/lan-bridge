@@ -1,14 +1,18 @@
 {
   "name": "lan-bridge",
-  "version": "1.0.0",
-  "description": "内网桥接工具 - 文本同步、文件传输、剪贴板操作",
+  "version": "2.0.0",
+  "description": "内网桥接工具 - 文本同步、文件传输、剪贴板操作、用户管理、快捷方法",
   "main": "server.js",
   "bin": {
     "lan-bridge": "./bin/lan-bridge.js"
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "build": "cd web && npm install && npm run build",
+    "build:web": "cd web && npm run build",
+    "dev:web": "cd web && npm run dev",
+    "postinstall": "npm run build || true"
   },
   "keywords": [
     "lan",
@@ -17,7 +21,8 @@
     "clipboard",
     "qrcode",
     "内网",
-    "文件传输"
+    "文件传输",
+    "react"
   ],
   "author": "",
   "license": "MIT",

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * LAN Bridge - 内网桥接工具
- * 支持文本同步、文件传输、剪贴板操作
+ * LAN Bridge v2 - 内网桥接工具
+ * 支持文本同步、文件传输、剪贴板操作、用户管理
  * 
  * 使用方法：
  *   node server.js [--port=端口号]
@@ -23,8 +23,9 @@ const auth = require('./lib/auth');
 const clipboard = require('./lib/clipboard');
 const fileManager = require('./lib/file-manager');
 const chatStore = require('./lib/chat-store');
+const userManager = require('./lib/user-manager');
 
-// 端口配置：命令行参数 > 环境变量 > 自动查找
+// 端口配置
 function getPreferredPort() {
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i++) {
@@ -38,13 +39,10 @@ function getPreferredPort() {
   if (process.env.PORT) {
     return parseInt(process.env.PORT, 10);
   }
-  return 9527; // 默认首选端口
+  return 9527;
 }
 
-// 实际使用的端口（服务器启动后更新）
 let PORT = getPreferredPort();
-
-// 当前同步的文本内容
 let currentText = '';
 
 // 获取本机 IP
@@ -60,7 +58,7 @@ function getLocalIP() {
   return '127.0.0.1';
 }
 
-// 获取 AI 回复的 prompt 后缀
+// AI 回复 prompt 后缀
 function getSummaryPromptSuffix() {
   const portArg = PORT !== 9527 ? ` --port=${PORT}` : '';
   return `
@@ -70,22 +68,27 @@ cd ${__dirname} && node send-reply.js "你的简短回复摘要（不超过50字
 】`;
 }
 
-// 包装 prompt，添加摘要请求
 function wrapPromptWithSummaryRequest(text) {
   return text + getSummaryPromptSuffix();
 }
 
-// 所有连接的客户端
+// 所有客户端
 let clients = new Set();
 
-// 广播消息给所有客户端
-function broadcast(message) {
+// 广播消息
+function broadcast(message, excludeWs = null) {
   const data = JSON.stringify(message);
   clients.forEach(client => {
-    if (client.readyState === 1) { // WebSocket.OPEN
+    if (client.readyState === 1 && client !== excludeWs) {
       client.send(data);
     }
   });
+}
+
+// 广播用户列表
+function broadcastUserList() {
+  const users = userManager.getOnlineUsers();
+  broadcast({ type: 'user_list', users });
 }
 
 // 处理消息
@@ -93,117 +96,163 @@ async function handleMessage(ws, data) {
   try {
     const message = JSON.parse(data.toString());
     const time = new Date().toLocaleTimeString('zh-CN');
+    const user = userManager.getUserByWs(ws);
+    
+    // 更新活跃时间
+    userManager.updateActivity(ws);
     
     switch (message.type) {
       case 'sync_text':
         currentText = message.content || '';
-        console.log(`[${time}] 📝 已同步文本: ${currentText.substring(0, 50)}${currentText.length > 50 ? '...' : ''}`);
+        console.log(`[${time}] 📝 ${user?.name || '未知'} 同步文本`);
         ws.send(JSON.stringify({ type: 'ack', action: 'sync_text' }));
         break;
         
-      case 'paste_only':
-        const pasteNeedAiReply = message.needAiReply === true;
-        console.log(`[${time}] 📋 执行粘贴${pasteNeedAiReply ? '（需AI回复）' : ''}`);
+      case 'paste_only': {
+        const needAiReply = message.needAiReply === true;
+        console.log(`[${time}] 📋 ${user?.name || '未知'} 执行粘贴`);
         
         if (currentText.trim()) {
-          const contentToWrite = pasteNeedAiReply 
-            ? wrapPromptWithSummaryRequest(currentText) 
-            : currentText;
-          await clipboard.writeClipboard(contentToWrite);
-          await new Promise(resolve => setTimeout(resolve, 100));
+          const content = needAiReply ? wrapPromptWithSummaryRequest(currentText) : currentText;
+          await clipboard.writeClipboard(content);
+          await new Promise(r => setTimeout(r, 100));
         }
         
         await clipboard.doPaste();
+        
+        // 记录活动
+        if (user) {
+          userManager.addActivity(user.id, 'paste', currentText.substring(0, 50), { 
+            fullContent: currentText,
+            aiReply: needAiReply 
+          });
+        }
+        
         ws.send(JSON.stringify({ type: 'ack', action: 'paste_only' }));
         break;
+      }
         
-      case 'submit':
-        const submitNeedAiReply = message.needAiReply === true;
-        console.log(`[${time}] 🚀 粘贴并发送${submitNeedAiReply ? '（需AI回复）' : ''}`);
+      case 'submit': {
+        const needAiReply = message.needAiReply === true;
+        console.log(`[${time}] 🚀 ${user?.name || '未知'} 粘贴并发送`);
         
-        // 保存用户消息到聊天记录
         if (currentText.trim()) {
-          chatStore.saveMessage({ role: 'user', content: currentText });
+          // 保存聊天记录
+          const chatMsg = chatStore.saveMessage({ 
+            role: 'user', 
+            content: currentText,
+            userId: user?.id,
+            userName: user?.name,
+            userAvatar: user?.avatar,
+          });
           
-          const contentToWrite = submitNeedAiReply 
-            ? wrapPromptWithSummaryRequest(currentText) 
-            : currentText;
-          await clipboard.writeClipboard(contentToWrite);
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // 广播新消息
+          broadcast({ 
+            type: 'new_chat_message', 
+            message: chatMsg 
+          });
+          
+          const content = needAiReply ? wrapPromptWithSummaryRequest(currentText) : currentText;
+          await clipboard.writeClipboard(content);
+          await new Promise(r => setTimeout(r, 100));
+          
+          // 记录活动
+          if (user) {
+            userManager.addActivity(user.id, 'submit', currentText.substring(0, 50), {
+              fullContent: currentText,
+              aiReply: needAiReply
+            });
+          }
         }
         
         await clipboard.doPaste();
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(r => setTimeout(r, 50));
         await clipboard.simulateEnter();
         currentText = '';
         ws.send(JSON.stringify({ type: 'ack', action: 'submit' }));
         break;
+      }
         
       case 'get_clipboard':
-        console.log(`[${time}] 📋 获取剪贴板`);
-        const clipboardContent = await clipboard.readClipboard();
-        ws.send(JSON.stringify({ 
-          type: 'clipboard_content', 
-          content: clipboardContent,
-          timestamp: Date.now()
-        }));
+        console.log(`[${time}] 📋 ${user?.name || '未知'} 获取剪贴板`);
+        const clipContent = await clipboard.readClipboard();
+        ws.send(JSON.stringify({ type: 'clipboard_content', content: clipContent, timestamp: Date.now() }));
         break;
         
       case 'get_current_line':
-        console.log(`[${time}] 📋 获取当前行`);
+        console.log(`[${time}] 📋 ${user?.name || '未知'} 获取当前行`);
         await clipboard.simulateCopyLine();
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(r => setTimeout(r, 100));
         const lineContent = await clipboard.readClipboard();
-        ws.send(JSON.stringify({ 
-          type: 'current_line_content', 
-          content: lineContent.trim(),
-          timestamp: Date.now()
-        }));
+        ws.send(JSON.stringify({ type: 'current_line_content', content: lineContent.trim(), timestamp: Date.now() }));
         break;
         
       case 'replace_line':
-        console.log(`[${time}] 🔄 替换当前行`);
+        console.log(`[${time}] 🔄 ${user?.name || '未知'} 替换当前行`);
         await clipboard.simulateClearLine();
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(r => setTimeout(r, 50));
         await clipboard.doPaste();
+        
+        if (user) {
+          userManager.addActivity(user.id, 'replace', currentText.substring(0, 50));
+        }
+        
         ws.send(JSON.stringify({ type: 'ack', action: 'replace_line' }));
         break;
         
-      case 'get_chat_history':
-        console.log(`[${time}] 💬 获取聊天记录`);
-        const messages = chatStore.getRecentMessages(message.limit || 50);
-        ws.send(JSON.stringify({ 
-          type: 'chat_history', 
-          messages,
-          timestamp: Date.now()
-        }));
+      case 'get_chat_history': {
+        const limit = message.limit || 50;
+        const messages = chatStore.getRecentMessages(limit);
+        ws.send(JSON.stringify({ type: 'chat_history', messages, timestamp: Date.now() }));
         break;
+      }
         
       case 'clear_chat':
-        console.log(`[${time}] 🗑️ 清空聊天记录`);
+        console.log(`[${time}] 🗑️ ${user?.name || '未知'} 清空聊天记录`);
         chatStore.clearTodayMessages();
+        broadcast({ type: 'chat_cleared' });
         ws.send(JSON.stringify({ type: 'ack', action: 'clear_chat' }));
         break;
         
-      case 'get_files':
-        console.log(`[${time}] 📁 获取文件列表`);
-        const files = fileManager.getFileList(message.category || 'all');
-        ws.send(JSON.stringify({ 
-          type: 'file_list', 
-          files,
-          timestamp: Date.now()
-        }));
+      case 'get_files': {
+        const category = message.category || 'all';
+        const files = fileManager.getFileList(category);
+        ws.send(JSON.stringify({ type: 'file_list', files, timestamp: Date.now() }));
         break;
+      }
         
-      case 'delete_file':
-        console.log(`[${time}] 🗑️ 删除文件: ${message.filename}`);
+      case 'delete_file': {
+        console.log(`[${time}] 🗑️ ${user?.name || '未知'} 删除文件: ${message.filename}`);
         const deleted = fileManager.deleteFile(message.filename, message.category);
-        ws.send(JSON.stringify({ 
-          type: 'ack', 
-          action: 'delete_file',
-          success: deleted
-        }));
+        ws.send(JSON.stringify({ type: 'ack', action: 'delete_file', success: deleted }));
         break;
+      }
+        
+      case 'settings_update': {
+        console.log(`[${time}] ⚙️ ${user?.name || '未知'} 更新设置`);
+        if (message.settings?.maxConnections) {
+          userManager.setMaxConnections(message.settings.maxConnections);
+        }
+        broadcast({ type: 'settings_changed', settings: message.settings });
+        break;
+      }
+        
+      case 'kick_user': {
+        console.log(`[${time}] 🚫 ${user?.name || '未知'} 踢出用户: ${message.userId}`);
+        const kickedUser = userManager.kickUser(message.userId);
+        if (kickedUser) {
+          broadcast({ type: 'user_kicked', userId: message.userId, userName: kickedUser.name });
+          broadcastUserList();
+        }
+        break;
+      }
+        
+      case 'get_user_activities': {
+        const userId = message.userId;
+        const activities = userManager.getUserActivities(userId, message.limit || 50);
+        ws.send(JSON.stringify({ type: 'user_activities', userId, activities }));
+        break;
+      }
         
       default:
         console.log(`[${time}] ❓ 未知消息类型: ${message.type}`);
@@ -225,7 +274,7 @@ function parseMultipart(buffer, boundary) {
   let end = buffer.indexOf(boundaryBuffer, start);
   
   while (end !== -1) {
-    start = end + boundaryBuffer.length + 2; // +2 for CRLF
+    start = end + boundaryBuffer.length + 2;
     end = buffer.indexOf(boundaryBuffer, start);
     
     if (end === -1) {
@@ -234,7 +283,7 @@ function parseMultipart(buffer, boundary) {
     
     if (end === -1 || start >= end) break;
     
-    const part = buffer.slice(start, end - 2); // -2 for CRLF before boundary
+    const part = buffer.slice(start, end - 2);
     const headerEnd = part.indexOf('\r\n\r\n');
     
     if (headerEnd === -1) continue;
@@ -242,7 +291,6 @@ function parseMultipart(buffer, boundary) {
     const headerPart = part.slice(0, headerEnd).toString('utf8');
     const bodyPart = part.slice(headerEnd + 4);
     
-    // 解析 headers
     const headers = {};
     headerPart.split('\r\n').forEach(line => {
       const match = line.match(/^(.+?):\s*(.+)$/);
@@ -251,7 +299,6 @@ function parseMultipart(buffer, boundary) {
       }
     });
     
-    // 解析 Content-Disposition
     const disposition = headers['content-disposition'] || '';
     const nameMatch = disposition.match(/name="([^"]+)"/);
     const filenameMatch = disposition.match(/filename="([^"]+)"/);
@@ -274,7 +321,6 @@ function createHttpServer() {
     const pathname = url.pathname;
     const token = url.searchParams.get('token');
     
-    // CORS 头
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -285,38 +331,21 @@ function createHttpServer() {
       return;
     }
     
-    // 根路径 - 显示二维码页面或客户端页面
+    // 根路径
     if (pathname === '/' || pathname === '/index.html') {
       const hasValidToken = token && auth.validateToken(token);
       
       if (hasValidToken) {
-        // 有效 token，显示客户端页面
-        const htmlPath = path.join(__dirname, 'web', 'index.html');
-        fs.readFile(htmlPath, 'utf8', (err, data) => {
-          if (err) {
-            res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end('页面未找到');
-            return;
-          }
-          // 注入 token
-          const injectedHtml = data.replace(
-            '</head>',
-            `<script>window.AUTH_TOKEN = "${token}";</script></head>`
-          );
-          res.writeHead(200, { 
-            'Content-Type': 'text/html; charset=utf-8',
-            'Set-Cookie': `token=${token}; Path=/; SameSite=Strict`
-          });
-          res.end(injectedHtml);
-        });
+        // 有效 token，返回客户端页面
+        await serveClientPage(res, token);
       } else {
-        // 无 token 或无效 token，显示二维码页面
-        await serveQRCodePage(req, res);
+        // 无 token，返回二维码页面
+        await serveQRCodePage(res);
       }
       return;
     }
     
-    // API: 生成二维码图片
+    // API: 生成二维码
     if (pathname === '/api/qrcode') {
       try {
         const ip = getLocalIP();
@@ -324,13 +353,19 @@ function createHttpServer() {
         const qrDataUrl = await QRCode.toDataURL(secureUrl, {
           width: 256,
           margin: 2,
-          color: { dark: '#000000', light: '#ffffff' }
         });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ 
           qrcode: qrDataUrl, 
           url: secureUrl,
-          connections: clients.size
+          connections: userManager.getOnlineCount(),
+          maxConnections: userManager.getMaxConnections(),
+          users: userManager.getOnlineUsers().map(u => ({
+            id: u.id,
+            name: u.name,
+            avatar: u.avatar,
+            isOnline: u.isOnline,
+          })),
         }));
       } catch (error) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -369,20 +404,15 @@ function createHttpServer() {
           const results = [];
           parts.forEach(part => {
             if (part.filename) {
-              const result = fileManager.saveFile(
-                part.data, 
-                part.filename, 
-                part.contentType
-              );
+              const result = fileManager.saveFile(part.data, part.filename, part.contentType);
               results.push(result);
-              console.log(`[${new Date().toLocaleTimeString('zh-CN')}] 📤 上传文件: ${part.filename} (${result.category})`);
+              console.log(`[${new Date().toLocaleTimeString('zh-CN')}] 📤 上传文件: ${part.filename}`);
             }
           });
           
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: true, files: results }));
         } catch (error) {
-          console.error('文件上传失败:', error);
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: error.message }));
         }
@@ -403,7 +433,7 @@ function createHttpServer() {
         res.writeHead(200, {
           'Content-Type': mimeType,
           'Content-Length': stat.size,
-          'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`
+          'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
         });
         
         fs.createReadStream(filePath).pipe(res);
@@ -414,7 +444,7 @@ function createHttpServer() {
       return;
     }
     
-    // API: 获取文件列表
+    // API: 文件列表
     if (pathname === '/api/files') {
       const category = url.searchParams.get('category') || 'all';
       const files = fileManager.getFileList(category);
@@ -441,21 +471,12 @@ function createHttpServer() {
       return;
     }
     
-    // API: 获取聊天记录
+    // API: 聊天记录
     if (pathname === '/api/chats') {
       const limit = parseInt(url.searchParams.get('limit') || '50');
       const messages = chatStore.getRecentMessages(limit);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ messages }));
-      return;
-    }
-    
-    // API: 获取存储统计
-    if (pathname === '/api/stats') {
-      const fileStats = fileManager.getStats();
-      const chatStats = chatStore.getStats();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ files: fileStats, chats: chatStats }));
       return;
     }
     
@@ -465,226 +486,175 @@ function createHttpServer() {
   });
 }
 
-// 生成二维码页面（服务端显示）
-async function serveQRCodePage(req, res) {
-  const ip = getLocalIP();
-  const secureUrl = auth.generateSecureUrl(`http://${ip}:${PORT}`);
-  
-  let qrDataUrl = '';
-  try {
-    qrDataUrl = await QRCode.toDataURL(secureUrl, {
-      width: 280,
-      margin: 2,
-      color: { dark: '#000000', light: '#ffffff' }
-    });
-  } catch (error) {
-    console.error('生成二维码失败:', error);
+// 服务客户端页面（从 dist 或 web 目录）
+async function serveClientPage(res, token) {
+  // 优先使用打包后的文件
+  let htmlPath = path.join(__dirname, 'dist', 'index.html');
+  if (!fs.existsSync(htmlPath)) {
+    // 降级到开发模式的文件
+    htmlPath = path.join(__dirname, 'web', 'index.html');
   }
   
-  const html = `<!DOCTYPE html>
+  if (!fs.existsSync(htmlPath)) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('页面未找到，请先运行 npm run build');
+    return;
+  }
+  
+  let html = fs.readFileSync(htmlPath, 'utf8');
+  
+  // 注入 token 和配置
+  const injectedScript = `<script>
+    window.AUTH_TOKEN = "${token}";
+    window.IS_SERVER_VIEW = false;
+  </script>`;
+  html = html.replace('</head>', `${injectedScript}</head>`);
+  
+  res.writeHead(200, { 
+    'Content-Type': 'text/html; charset=utf-8',
+    'Set-Cookie': `token=${token}; Path=/; SameSite=Strict`,
+  });
+  res.end(html);
+}
+
+// 服务二维码页面（内联 HTML）
+async function serveQRCodePage(res) {
+  // 优先使用打包后的文件
+  let htmlPath = path.join(__dirname, 'dist', 'index.html');
+  if (!fs.existsSync(htmlPath)) {
+    htmlPath = path.join(__dirname, 'web', 'index.html');
+  }
+  
+  if (fs.existsSync(htmlPath)) {
+    let html = fs.readFileSync(htmlPath, 'utf8');
+    
+    // 注入服务端标识
+    const injectedScript = `<script>
+      window.AUTH_TOKEN = "";
+      window.IS_SERVER_VIEW = true;
+    </script>`;
+    html = html.replace('</head>', `${injectedScript}</head>`);
+    
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+  } else {
+    // 使用内联的简单二维码页面
+    const ip = getLocalIP();
+    const secureUrl = auth.generateSecureUrl(`http://${ip}:${PORT}`);
+    
+    let qrDataUrl = '';
+    try {
+      qrDataUrl = await QRCode.toDataURL(secureUrl, { width: 280, margin: 2 });
+    } catch (error) {
+      console.error('生成二维码失败:', error);
+    }
+    
+    const html = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LAN Bridge - 扫码连接</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .card {
-      background: white;
-      border-radius: 24px;
-      padding: 40px;
-      text-align: center;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      max-width: 400px;
-      width: 100%;
-    }
-    h1 {
-      font-size: 28px;
-      color: #1a1a2e;
-      margin-bottom: 8px;
-    }
-    .subtitle {
-      color: #666;
-      font-size: 14px;
-      margin-bottom: 30px;
-    }
-    .qr-container {
-      background: #f8f9fa;
-      border-radius: 16px;
-      padding: 20px;
-      margin-bottom: 24px;
-    }
-    .qr-container img {
-      width: 240px;
-      height: 240px;
-      border-radius: 8px;
-    }
-    .status {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 12px 20px;
-      background: #e8f5e9;
-      border-radius: 12px;
-      color: #2e7d32;
-      font-size: 14px;
-      margin-bottom: 20px;
-    }
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      background: #4caf50;
-      border-radius: 50%;
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-    .connections {
-      font-size: 13px;
-      color: #888;
-    }
-    .tip {
-      margin-top: 20px;
-      padding: 16px;
-      background: #fff3e0;
-      border-radius: 12px;
-      font-size: 13px;
-      color: #e65100;
-    }
-    .refresh-btn {
-      margin-top: 16px;
-      padding: 10px 24px;
-      background: #667eea;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .refresh-btn:hover {
-      background: #5a6fd6;
-    }
+    body { font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; }
+    .card { background: white; border-radius: 24px; padding: 40px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 400px; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .subtitle { color: #666; font-size: 14px; margin-bottom: 30px; }
+    .qr { background: #f8f9fa; border-radius: 16px; padding: 20px; margin-bottom: 24px; }
+    .qr img { width: 240px; height: 240px; }
+    .status { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; background: #e8f5e9; border-radius: 12px; color: #2e7d32; font-size: 14px; margin-bottom: 20px; }
+    .dot { width: 8px; height: 8px; background: #4caf50; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .tip { padding: 16px; background: #fff3e0; border-radius: 12px; font-size: 13px; color: #e65100; }
+    .btn { margin-top: 16px; padding: 10px 24px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>🌉 LAN Bridge</h1>
     <p class="subtitle">内网桥接工具 - 扫码连接</p>
-    
-    <div class="qr-container">
-      <img id="qrcode" src="${qrDataUrl}" alt="扫码连接">
-    </div>
-    
-    <div class="status">
-      <span class="status-dot"></span>
-      <span>服务运行中</span>
-    </div>
-    
-    <p class="connections">当前连接数: <span id="connCount">${clients.size}</span></p>
-    
-    <div class="tip">
-      📱 使用手机浏览器扫描二维码连接<br>
-      ⚠️ 请确保手机和电脑在同一网络
-    </div>
-    
-    <button class="refresh-btn" onclick="refreshQR()">🔄 刷新二维码</button>
+    <div class="qr"><img src="${qrDataUrl}" alt="扫码连接"></div>
+    <div class="status"><span class="dot"></span><span>服务运行中</span></div>
+    <p style="font-size:13px;color:#888;">当前连接: ${userManager.getOnlineCount()} / ${userManager.getMaxConnections()}</p>
+    <div class="tip">📱 使用手机浏览器扫描二维码连接<br>⚠️ 请确保手机和电脑在同一网络</div>
+    <button class="btn" onclick="location.reload()">🔄 刷新二维码</button>
   </div>
-  
-  <script>
-    async function refreshQR() {
-      try {
-        const res = await fetch('/api/qrcode');
-        const data = await res.json();
-        document.getElementById('qrcode').src = data.qrcode;
-        document.getElementById('connCount').textContent = data.connections;
-      } catch (e) {
-        console.error('刷新失败:', e);
-      }
-    }
-    
-    // 每 5 秒自动刷新连接数
-    setInterval(async () => {
-      try {
-        const res = await fetch('/api/qrcode');
-        const data = await res.json();
-        document.getElementById('connCount').textContent = data.connections;
-      } catch (e) {}
-    }, 5000);
-  </script>
 </body>
 </html>`;
-
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(html);
+    
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+  }
 }
 
-// 显示启动信息和二维码
+// 显示启动信息
 function showStartupInfo(ip, port) {
   const secureUrl = auth.generateSecureUrl(`http://${ip}:${port}`);
   const webUrl = `http://${ip}:${port}`;
   
   console.log('\n');
   console.log('╔═══════════════════════════════════════════════════╗');
-  console.log('║            🌉 LAN Bridge - 内网桥接工具            ║');
-  console.log('║       文本同步 | 文件传输 | 剪贴板操作             ║');
+  console.log('║          🌉 LAN Bridge v2 - 内网桥接工具           ║');
+  console.log('║    文本同步 | 文件传输 | 用户管理 | 快捷方法       ║');
   console.log('╠═══════════════════════════════════════════════════╣');
   console.log(`║  服务地址: ${webUrl.padEnd(38)}║`);
-  console.log(`║  数据目录: ~/Documents/lan-bridge/                 ║`);
+  console.log(`║  最大连接: ${String(userManager.getMaxConnections()).padEnd(38)}║`);
+  console.log(`║  数据目录: ~/Documents/lan-bridge/${''.padEnd(17)}║`);
   console.log('╚═══════════════════════════════════════════════════╝');
   console.log('\n📱 手机扫描下方二维码连接（含加密 token）:\n');
   qrcode.generate(secureUrl, { small: true });
   console.log('\n💡 或在浏览器打开上述地址查看二维码页面');
-  console.log(`\n📤 发送AI回复: node send-reply.js "内容"${port !== 9527 ? ` --port=${port}` : ''}`);
+  console.log(`📤 发送AI回复: node send-reply.js "内容"${port !== 9527 ? ` --port=${port}` : ''}`);
   console.log('\n按 Ctrl+C 停止服务\n');
   console.log('─'.repeat(50));
 }
 
-// 设置 WebSocket 服务器
+// 设置 WebSocket
 function setupWebSocket(server) {
   const wss = new WebSocketServer({ server });
   
   wss.on('connection', (ws, req) => {
-    // 验证 WebSocket 连接的 token
     const url = new URL(req.url, `http://${req.headers.host}`);
     const token = url.searchParams.get('token');
     const isLocal = url.searchParams.get('local') === 'true';
     
-    // 本地连接（来自 send-reply.js）允许不带 token
-    // 检查是否为本地回环地址
+    // 本地连接检查
     const clientIP = req.socket.remoteAddress;
-    const isLocalConnection = clientIP === '127.0.0.1' || 
-                              clientIP === '::1' || 
-                              clientIP === '::ffff:127.0.0.1' ||
+    const isLocalConnection = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(clientIP) ||
                               clientIP?.includes('192.168.') ||
                               clientIP?.includes('10.') ||
                               clientIP?.includes('172.');
     
+    // Token 验证
     if (!auth.validateToken(token) && !(isLocal && isLocalConnection)) {
       console.log('\n❌ WebSocket 连接被拒绝: 无效的 token\n');
       ws.close(4001, '未授权');
       return;
     }
     
+    // 添加用户
+    const result = userManager.addUser(ws, token);
+    if (result.error) {
+      console.log(`\n❌ 连接被拒绝: ${result.error}\n`);
+      ws.close(4003, result.error);
+      return;
+    }
+    
+    const user = result.user;
     clients.add(ws);
-    console.log('\n✅ 客户端已连接! (当前连接数:', clients.size, ')\n');
-    currentText = '';
+    
+    console.log(`\n✅ ${user.name} ${user.avatar} 已连接! (当前: ${userManager.getOnlineCount()}/${userManager.getMaxConnections()})\n`);
+    
+    // 发送用户信息
+    ws.send(JSON.stringify({ type: 'user_info', user }));
     
     // 发送历史聊天记录
     const messages = chatStore.getRecentMessages(50);
     ws.send(JSON.stringify({ type: 'chat_history', messages }));
+    
+    // 广播新用户
+    broadcast({ type: 'user_connected', user }, ws);
+    broadcastUserList();
     
     ws.on('message', (data) => {
       try {
@@ -692,7 +662,8 @@ function setupWebSocket(server) {
         if (msg.type === 'ai_reply') {
           const time = new Date().toLocaleTimeString('zh-CN');
           console.log(`[${time}] 🤖 AI回复: ${msg.summary?.substring(0, 50)}...`);
-          // 保存 AI 回复到聊天记录
+          
+          // 保存 AI 回复
           chatStore.saveMessage({ role: 'ai', content: msg.summary || msg.content });
           broadcast(msg);
         } else {
@@ -704,12 +675,19 @@ function setupWebSocket(server) {
     });
     
     ws.on('close', () => {
+      const disconnectedUser = userManager.removeUser(ws);
       clients.delete(ws);
-      console.log('\n❌ 客户端已断开 (当前连接数:', clients.size, ')\n');
+      
+      if (disconnectedUser) {
+        console.log(`\n❌ ${disconnectedUser.name} ${disconnectedUser.avatar} 已断开 (当前: ${userManager.getOnlineCount()})\n`);
+        broadcast({ type: 'user_disconnected', userId: disconnectedUser.id });
+        broadcastUserList();
+      }
     });
     
     ws.on('error', (error) => {
       console.error('WebSocket 错误:', error.message);
+      userManager.removeUser(ws);
       clients.delete(ws);
     });
   });
@@ -717,7 +695,7 @@ function setupWebSocket(server) {
   return wss;
 }
 
-// 尝试在指定端口启动服务器
+// 端口监听
 function tryListen(server, port, maxAttempts = 10) {
   return new Promise((resolve, reject) => {
     let attempts = 0;
@@ -729,7 +707,7 @@ function tryListen(server, port, maxAttempts = 10) {
         if (error.code === 'EADDRINUSE' && attempts < maxAttempts) {
           tryPort(currentPort + 1);
         } else if (error.code === 'EADDRINUSE') {
-          reject(new Error(`无法找到可用端口（尝试了 ${port} - ${currentPort}）`));
+          reject(new Error(`无法找到可用端口`));
         } else {
           reject(error);
         }
@@ -748,7 +726,6 @@ function tryListen(server, port, maxAttempts = 10) {
 
 // 启动服务器
 async function startServer() {
-  // 初始化模块
   auth.init();
   fileManager.init();
   chatStore.init();
@@ -782,10 +759,8 @@ try {
   process.exit(0);
 }
 
-// 导出供外部使用
 module.exports = { startServer };
 
-// 直接运行时启动服务器
 if (require.main === module) {
   startServer();
 }

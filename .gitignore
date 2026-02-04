@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+web/node_modules/
 
 # OS files
 .DS_Store
@@ -15,3 +16,4 @@ npm-debug.log*
 
 # Package lock (optional - can be included)
 # package-lock.json
+# web/package-lock.json
