@@ -37,6 +37,15 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   time: string;
+  // 文件相关字段
+  messageType?: 'text' | 'file' | 'image' | 'video';
+  file?: {
+    filename: string;
+    category: 'files' | 'images' | 'videos';
+    size: number;
+    mimeType: string;
+    url?: string;
+  };
 }
 
 // 文件信息

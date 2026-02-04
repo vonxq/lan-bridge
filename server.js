@@ -333,14 +333,19 @@ function createHttpServer() {
     
     // 根路径
     if (pathname === '/' || pathname === '/index.html') {
-      const hasValidToken = token && auth.validateToken(token);
+      const serverToken = url.searchParams.get('server_token');
+      const hasValidClientToken = token && auth.validateToken(token);
+      const hasValidServerToken = serverToken && auth.validateServerToken(serverToken);
       
-      if (hasValidToken) {
-        // 有效 token，返回客户端页面
+      if (hasValidClientToken) {
+        // 有效客户端 token，返回客户端页面
         await serveClientPage(res, token);
+      } else if (hasValidServerToken) {
+        // 有效服务端 token，返回服务端控制台
+        await serveServerPage(res, serverToken);
       } else {
-        // 无 token，返回二维码页面
-        await serveQRCodePage(res);
+        // 无有效 token，返回 403 页面
+        serve403Page(res);
       }
       return;
     }
@@ -475,6 +480,65 @@ function createHttpServer() {
       return;
     }
     
+    // API: 在 Finder 中打开文件（仅服务端可用）
+    if (pathname === '/api/open-in-finder' && req.method === 'POST') {
+      // 只允许本地请求
+      if (!isLocalRequest) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: '此操作仅限服务端使用' }));
+        return;
+      }
+      
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const { filename, category } = JSON.parse(body);
+          const filepath = fileManager.getFilePath(filename, category);
+          
+          if (!filepath || !fs.existsSync(filepath)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: '文件不存在' }));
+            return;
+          }
+          
+          // 在 Finder/文件管理器中定位文件
+          const { exec } = require('child_process');
+          let command;
+          
+          switch (process.platform) {
+            case 'darwin':
+              // macOS: open -R 可以在 Finder 中显示并选中文件
+              command = `open -R "${filepath}"`;
+              break;
+            case 'win32':
+              // Windows: explorer /select
+              command = `explorer /select,"${filepath.replace(/\//g, '\\')}"`;
+              break;
+            default:
+              // Linux: 使用 xdg-open 打开所在目录
+              const dir = path.dirname(filepath);
+              command = `xdg-open "${dir}"`;
+          }
+          
+          exec(command, (err) => {
+            if (err) {
+              console.error('打开文件管理器失败:', err);
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: '打开失败' }));
+            } else {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: true, filepath }));
+            }
+          });
+        } catch (error) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: error.message }));
+        }
+      });
+      return;
+    }
+    
     // API: 聊天记录
     if (pathname === '/api/chats') {
       const limit = parseInt(url.searchParams.get('limit') || '50');
@@ -576,8 +640,78 @@ async function serveClientPage(res, token) {
   res.end(html);
 }
 
-// 服务二维码页面（内联 HTML）
-async function serveQRCodePage(res) {
+// 403 禁止访问页面
+function serve403Page(res) {
+  const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>403 - 禁止访问</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); 
+      min-height: 100vh; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+    }
+    .container { 
+      text-align: center; 
+      padding: 40px; 
+    }
+    .icon { 
+      font-size: 80px; 
+      margin-bottom: 24px; 
+    }
+    h1 { 
+      color: #e74c3c; 
+      font-size: 48px; 
+      margin-bottom: 16px; 
+    }
+    p { 
+      color: #94a3b8; 
+      font-size: 18px; 
+      line-height: 1.6; 
+      max-width: 400px; 
+      margin: 0 auto 32px; 
+    }
+    .tip { 
+      background: rgba(255,255,255,0.05); 
+      border: 1px solid rgba(255,255,255,0.1); 
+      border-radius: 12px; 
+      padding: 20px; 
+      color: #64748b; 
+      font-size: 14px; 
+      max-width: 400px; 
+      margin: 0 auto; 
+    }
+    .tip strong { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">🔒</div>
+    <h1>403</h1>
+    <p>访问被拒绝<br>需要有效的授权令牌才能访问此页面</p>
+    <div class="tip">
+      <strong>如何连接？</strong><br><br>
+      1. 在服务端电脑上启动 LAN Bridge<br>
+      2. 使用手机扫描终端中的二维码<br>
+      3. 或等待浏览器自动打开控制台
+    </div>
+  </div>
+</body>
+</html>`;
+  
+  res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(html);
+}
+
+// 服务端控制台页面
+async function serveServerPage(res, serverToken) {
   // 优先使用打包后的文件
   let htmlPath = path.join(__dirname, 'dist', 'index.html');
   if (!fs.existsSync(htmlPath)) {
@@ -587,9 +721,10 @@ async function serveQRCodePage(res) {
   if (fs.existsSync(htmlPath)) {
     let html = fs.readFileSync(htmlPath, 'utf8');
     
-    // 注入服务端标识
+    // 注入服务端标识和 token
     const injectedScript = `<script>
       window.AUTH_TOKEN = "";
+      window.SERVER_TOKEN = "${serverToken}";
       window.IS_SERVER_VIEW = true;
     </script>`;
     html = html.replace('</head>', `${injectedScript}</head>`);
@@ -613,7 +748,7 @@ async function serveQRCodePage(res) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LAN Bridge - 扫码连接</title>
+  <title>LAN Bridge - 控制台</title>
   <style>
     body { font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; }
     .card { background: white; border-radius: 24px; padding: 40px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 400px; }
@@ -631,7 +766,7 @@ async function serveQRCodePage(res) {
 <body>
   <div class="card">
     <h1>🌉 LAN Bridge</h1>
-    <p class="subtitle">内网桥接工具 - 扫码连接</p>
+    <p class="subtitle">内网桥接工具 - 服务端控制台</p>
     <div class="qr"><img src="${qrDataUrl}" alt="扫码连接"></div>
     <div class="status"><span class="dot"></span><span>服务运行中</span></div>
     <p style="font-size:13px;color:#888;">当前连接: ${userManager.getOnlineCount()} / ${userManager.getMaxConnections()}</p>
@@ -673,7 +808,8 @@ function openBrowser(url) {
 function showStartupInfo(ip, port) {
   const secureUrl = auth.generateSecureUrl(`http://${ip}:${port}`);
   const webUrl = `http://${ip}:${port}`;
-  const localUrl = `http://localhost:${port}`;
+  const serverToken = auth.getServerToken();
+  const serverUrl = `http://localhost:${port}?server_token=${serverToken}`;
   
   console.log('\n');
   console.log('╔═══════════════════════════════════════════════════╗');
@@ -681,7 +817,6 @@ function showStartupInfo(ip, port) {
   console.log('║    文本同步 | 文件传输 | 用户管理 | 快捷方法       ║');
   console.log('╠═══════════════════════════════════════════════════╣');
   console.log(`║  服务地址: ${webUrl.padEnd(38)}║`);
-  console.log(`║  本地地址: ${localUrl.padEnd(38)}║`);
   console.log(`║  最大连接: ${String(userManager.getMaxConnections()).padEnd(38)}║`);
   console.log(`║  数据目录: ~/Documents/lan-bridge/${''.padEnd(17)}║`);
   console.log('╚═══════════════════════════════════════════════════╝');
@@ -691,9 +826,9 @@ function showStartupInfo(ip, port) {
   console.log('\n按 Ctrl+C 停止服务\n');
   console.log('─'.repeat(50));
   
-  // 自动打开浏览器
+  // 自动打开浏览器（带服务端 token）
   console.log('\n🌐 正在打开服务端控制台...\n');
-  openBrowser(localUrl);
+  openBrowser(serverUrl);
 }
 
 // 设置 WebSocket
@@ -703,24 +838,30 @@ function setupWebSocket(server) {
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const token = url.searchParams.get('token');
+    const serverToken = url.searchParams.get('server_token');
     const isLocal = url.searchParams.get('local') === 'true';
-    const isServerView = url.searchParams.get('server') === 'true';
     
     // 本地连接检查（只有 localhost 才算本地）
     const clientIP = req.socket.remoteAddress;
     const isLocalhost = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(clientIP);
     
-    // Token 验证：服务端视图或本地工具可以免验证
-    const bypassAuth = isLocalhost && (isLocal || isServerView);
+    // 服务端连接：需要有效的 server_token 且来自 localhost
+    const isValidServerConnection = isLocalhost && auth.validateServerToken(serverToken);
     
-    if (!auth.validateToken(token) && !bypassAuth) {
+    // 客户端连接：需要有效的 client token
+    const isValidClientConnection = auth.validateToken(token);
+    
+    // 本地工具连接（如 send-reply.js）
+    const isLocalToolConnection = isLocalhost && isLocal;
+    
+    if (!isValidServerConnection && !isValidClientConnection && !isLocalToolConnection) {
       console.log('\n❌ WebSocket 连接被拒绝: 无效的 token\n');
       ws.close(4001, '未授权');
       return;
     }
     
     // 服务端连接不占用用户名额
-    if (isServerView && isLocalhost) {
+    if (isValidServerConnection) {
       clients.add(ws);
       ws.isServerView = true;
       console.log('\n✅ 服务端控制台已连接\n');

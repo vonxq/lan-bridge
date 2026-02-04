@@ -144,25 +144,91 @@ export function ClientPage({ token }: ClientPageProps) {
     },
   ];
 
+  // 处理在 Finder 中打开文件
+  const handleOpenInFinder = async (filename: string, category: string) => {
+    try {
+      const res = await fetch('/api/open-in-finder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, category }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        showToast(data.error || '打开失败', 'error');
+      }
+    } catch (e) {
+      showToast('打开失败', 'error');
+    }
+  };
+
   return (
     <div
       style={{
         minHeight: '100vh',
-        padding: '16px',
-        paddingBottom: 'env(safe-area-inset-bottom, 16px)',
+        background: 'linear-gradient(180deg, var(--bg) 0%, var(--bg-secondary) 100%)',
+        padding: 'var(--space-4)',
+        paddingTop: 'max(var(--space-4), env(safe-area-inset-top))',
+        paddingBottom: 'max(var(--space-4), env(safe-area-inset-bottom))',
       }}
     >
-      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
-        {/* 标题 */}
-        <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-          <h1 style={{ fontSize: '24px', color: 'var(--primary)' }}>🌉 LAN Bridge</h1>
+      <div 
+        style={{ 
+          maxWidth: '500px', 
+          margin: '0 auto',
+          animation: 'fadeIn var(--transition-slow) ease',
+        }}
+      >
+        {/* 标题卡片 */}
+        <div 
+          style={{ 
+            textAlign: 'center', 
+            marginBottom: 'var(--space-4)',
+            padding: 'var(--space-4)',
+            background: 'var(--card)',
+            borderRadius: 'var(--radius-xl)',
+            boxShadow: 'var(--shadow-soft)',
+          }}
+        >
+          <h1 
+            style={{ 
+              fontSize: 'var(--text-2xl)', 
+              fontWeight: 700,
+              background: 'linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              marginBottom: 'var(--space-1)',
+            }}
+          >
+            🌉 LAN Bridge
+          </h1>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+            内网桥接工具
+          </p>
         </div>
 
         {/* 状态栏 */}
         <StatusBar onSettingsClick={() => setShowSettings(true)} />
 
         {/* Tab 内容 */}
-        <Tabs tabs={tabs} defaultTab="text" />
+        <div
+          style={{
+            background: 'var(--card)',
+            borderRadius: 'var(--radius-xl)',
+            boxShadow: 'var(--shadow-soft)',
+            padding: 'var(--space-4)',
+            marginTop: 'var(--space-4)',
+          }}
+        >
+          <Tabs 
+            tabs={tabs.map(t => 
+              t.id === 'chat' 
+                ? { ...t, content: <ChatPanel onClear={clearChat} onOpenInFinder={handleOpenInFinder} /> }
+                : t
+            )} 
+            defaultTab="text" 
+          />
+        </div>
       </div>
 
       {/* 设置模态框 */}

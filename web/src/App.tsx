@@ -6,6 +6,7 @@ import { ClientPage } from './pages/ClientPage';
 declare global {
   interface Window {
     AUTH_TOKEN?: string;
+    SERVER_TOKEN?: string;
     IS_SERVER_VIEW?: boolean;
   }
 }
@@ -16,15 +17,20 @@ function App() {
 
   useEffect(() => {
     // 检查是否有注入的 token
-    const token = window.AUTH_TOKEN || '';
+    const clientToken = window.AUTH_TOKEN || '';
+    const serverToken = window.SERVER_TOKEN || '';
     const isServer = window.IS_SERVER_VIEW === true;
     
     // 也可以从 URL 参数获取
     const urlParams = new URLSearchParams(window.location.search);
-    const urlToken = urlParams.get('token') || '';
+    const urlClientToken = urlParams.get('token') || '';
+    const urlServerToken = urlParams.get('server_token') || '';
     
-    setAuthToken(token || urlToken);
-    setIsServerView(isServer || (!token && !urlToken));
+    // 有服务端 token 或明确标记为服务端视图
+    const hasServerToken = !!(serverToken || urlServerToken);
+    
+    setAuthToken(clientToken || urlClientToken);
+    setIsServerView(isServer || hasServerToken);
   }, []);
 
   if (isServerView === null) {

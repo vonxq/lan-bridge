@@ -25,43 +25,72 @@ export function Tabs({ tabs, defaultTab, onChange }: TabsProps) {
 
   return (
     <div>
+      {/* Tab 导航 */}
       <div
         style={{
           display: 'flex',
-          background: 'var(--card)',
-          borderRadius: 'var(--radius)',
-          padding: '4px',
-          marginBottom: '16px',
-          boxShadow: 'var(--shadow)',
+          background: 'var(--bg)',
+          borderRadius: 'var(--radius-lg)',
+          padding: 'var(--space-1)',
+          marginBottom: 'var(--space-4)',
+          gap: 'var(--space-1)',
         }}
       >
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => handleTabChange(tab.id)}
-            style={{
-              flex: 1,
-              padding: '10px',
-              border: 'none',
-              background: activeTab === tab.id ? 'var(--primary)' : 'transparent',
-              color: activeTab === tab.id ? 'white' : 'var(--text-secondary)',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: '14px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px',
-            }}
-          >
-            {tab.icon && <span>{tab.icon}</span>}
-            <span>{tab.label}</span>
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => handleTabChange(tab.id)}
+              style={{
+                flex: 1,
+                padding: 'var(--space-3) var(--space-2)',
+                border: 'none',
+                background: isActive 
+                  ? 'var(--card)' 
+                  : 'transparent',
+                color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                borderRadius: 'var(--radius)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: isActive ? 600 : 500,
+                cursor: 'pointer',
+                transition: 'all var(--transition)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 'var(--space-1)',
+                boxShadow: isActive ? 'var(--shadow)' : 'none',
+                minHeight: '44px',
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.color = 'var(--text)';
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.5)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.color = 'var(--text-secondary)';
+                  e.currentTarget.style.background = 'transparent';
+                }
+              }}
+            >
+              {tab.icon && <span style={{ fontSize: '16px' }}>{tab.icon}</span>}
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
-      <div className="slide-up">{activeContent}</div>
+      
+      {/* Tab 内容 */}
+      <div 
+        className="fade-in"
+        style={{
+          animation: 'slideUp var(--transition) ease',
+        }}
+      >
+        {activeContent}
+      </div>
     </div>
   );
 }

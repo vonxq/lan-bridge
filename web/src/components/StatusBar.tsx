@@ -8,13 +8,13 @@ export function StatusBar({ onSettingsClick }: StatusBarProps) {
   const { connectionStatus, aiReplyEnabled, setAiReplyEnabled, users, currentUser } = useAppStore();
 
   const statusConfig = {
-    connecting: { color: 'var(--warning)', text: '连接中...' },
-    connected: { color: 'var(--success)', text: '已连接' },
-    disconnected: { color: 'var(--danger)', text: '未连接' },
-    error: { color: 'var(--danger)', text: '连接错误' },
+    connecting: { color: 'var(--warning)', text: '连接中...', shadow: '0 0 8px rgba(245, 158, 11, 0.5)' },
+    connected: { color: 'var(--success)', text: '已连接', shadow: '0 0 8px rgba(16, 185, 129, 0.5)' },
+    disconnected: { color: 'var(--danger)', text: '未连接', shadow: '0 0 8px rgba(239, 68, 68, 0.5)' },
+    error: { color: 'var(--danger)', text: '连接错误', shadow: '0 0 8px rgba(239, 68, 68, 0.5)' },
   };
 
-  const { color, text } = statusConfig[connectionStatus];
+  const { color, text, shadow } = statusConfig[connectionStatus];
 
   return (
     <div
@@ -22,26 +22,30 @@ export function StatusBar({ onSettingsClick }: StatusBarProps) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '12px 16px',
+        padding: 'var(--space-3) var(--space-4)',
         background: 'var(--card)',
-        borderRadius: 'var(--radius)',
-        marginBottom: '16px',
-        boxShadow: 'var(--shadow)',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-soft)',
+        flexWrap: 'wrap',
+        gap: 'var(--space-3)',
       }}
     >
       {/* 左侧：连接状态 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
           <div
             style={{
               width: '10px',
               height: '10px',
-              borderRadius: '50%',
+              borderRadius: 'var(--radius-full)',
               background: color,
+              boxShadow: shadow,
               animation: connectionStatus === 'connected' ? 'pulse 2s infinite' : 'none',
             }}
           />
-          <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{text}</span>
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', fontWeight: 500 }}>
+            {text}
+          </span>
         </div>
 
         {/* 当前用户信息 */}
@@ -50,15 +54,15 @@ export function StatusBar({ onSettingsClick }: StatusBarProps) {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
-              background: 'var(--bg)',
-              borderRadius: '20px',
-              fontSize: '13px',
+              gap: 'var(--space-2)',
+              padding: 'var(--space-1) var(--space-3)',
+              background: 'var(--primary-light)',
+              borderRadius: 'var(--radius-full)',
+              fontSize: 'var(--text-sm)',
             }}
           >
             <span>{currentUser.avatar}</span>
-            <span>{currentUser.name}</span>
+            <span style={{ fontWeight: 500, color: 'var(--primary)' }}>{currentUser.name}</span>
           </div>
         )}
 
@@ -66,28 +70,29 @@ export function StatusBar({ onSettingsClick }: StatusBarProps) {
         {users.length > 0 && (
           <span
             style={{
-              fontSize: '12px',
+              fontSize: 'var(--text-xs)',
               color: 'var(--text-secondary)',
-              padding: '2px 8px',
+              padding: 'var(--space-1) var(--space-2)',
               background: 'var(--bg)',
-              borderRadius: '10px',
+              borderRadius: 'var(--radius-full)',
+              fontWeight: 500,
             }}
           >
-            {users.length} 人在线
+            👥 {users.length} 在线
           </span>
         )}
       </div>
 
       {/* 右侧：AI回复开关和设置 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
         {/* AI 回复开关 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <label style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>🤖 AI回复</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <label style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>🤖</label>
           <label
             style={{
               position: 'relative',
-              width: '50px',
-              height: '28px',
+              width: '44px',
+              height: '24px',
               cursor: 'pointer',
             }}
           >
@@ -105,23 +110,25 @@ export function StatusBar({ onSettingsClick }: StatusBarProps) {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                background: aiReplyEnabled ? 'var(--primary)' : 'var(--border)',
-                borderRadius: '28px',
-                transition: '0.3s',
+                background: aiReplyEnabled 
+                  ? 'linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%)' 
+                  : 'var(--border)',
+                borderRadius: 'var(--radius-full)',
+                transition: 'all var(--transition)',
+                boxShadow: aiReplyEnabled ? '0 2px 8px rgba(102, 126, 234, 0.4)' : 'none',
               }}
             >
               <span
                 style={{
                   position: 'absolute',
-                  content: '""',
-                  height: '22px',
-                  width: '22px',
-                  left: aiReplyEnabled ? '25px' : '3px',
+                  height: '18px',
+                  width: '18px',
+                  left: aiReplyEnabled ? '23px' : '3px',
                   bottom: '3px',
                   background: 'white',
-                  borderRadius: '50%',
-                  transition: '0.3s',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  borderRadius: 'var(--radius-full)',
+                  transition: 'all var(--transition)',
+                  boxShadow: 'var(--shadow-sm)',
                 }}
               />
             </span>
@@ -133,11 +140,24 @@ export function StatusBar({ onSettingsClick }: StatusBarProps) {
           <button
             onClick={onSettingsClick}
             style={{
-              background: 'none',
+              background: 'var(--bg)',
               border: 'none',
-              fontSize: '20px',
+              fontSize: '18px',
               cursor: 'pointer',
-              padding: '4px',
+              padding: 'var(--space-2)',
+              borderRadius: 'var(--radius)',
+              transition: 'all var(--transition)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--bg-secondary)';
+              e.currentTarget.style.transform = 'rotate(45deg)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--bg)';
+              e.currentTarget.style.transform = 'rotate(0deg)';
             }}
           >
             ⚙️

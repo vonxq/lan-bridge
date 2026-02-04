@@ -43,70 +43,15 @@ export function TextPanel({
   }, []);
 
   return (
-    <div>
-      {/* 输入区域 */}
-      <div
-        style={{
-          background: 'var(--card)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '16px',
-          marginBottom: '16px',
-          boxShadow: 'var(--shadow)',
-        }}
-      >
-        <textarea
-          ref={textareaRef}
-          value={currentText}
-          onChange={handleTextChange}
-          placeholder="在这里输入内容..."
-          style={{
-            width: '100%',
-            minHeight: '120px',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            padding: '12px',
-            fontSize: '16px',
-            resize: 'none',
-            outline: 'none',
-            fontFamily: 'inherit',
-            transition: 'border-color 0.2s',
-          }}
-          onFocus={(e) => (e.target.style.borderColor = 'var(--primary)')}
-          onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
-        />
-        <div
-          style={{
-            textAlign: 'right',
-            fontSize: '12px',
-            color: 'var(--text-secondary)',
-            marginTop: '8px',
-          }}
-        >
-          {currentText.length} 字
-        </div>
-      </div>
-
-      {/* 工具栏 */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: '8px',
-          marginBottom: '16px',
-        }}
-      >
-        <ToolButton icon="📋" label="剪贴板" onClick={onGetClipboard} />
-        <ToolButton icon="📥" label="当前行" onClick={onGetCurrentLine} />
-        <ToolButton icon="🗑️" label="清空" onClick={handleClear} />
-        <ToolButton icon="🔄" label="重连" onClick={onReconnect} />
-      </div>
-
-      {/* 操作按钮 */}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* 操作按钮 - 移到最上方，键盘弹出时不会被遮挡 */}
       <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
           gap: '12px',
+          marginBottom: '12px',
+          flexShrink: 0,
         }}
       >
         <Button
@@ -136,6 +81,67 @@ export function TextPanel({
         >
           🚀 发送
         </Button>
+      </div>
+
+      {/* 工具栏 */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: '8px',
+          marginBottom: '12px',
+          flexShrink: 0,
+        }}
+      >
+        <ToolButton icon="📋" label="剪贴板" onClick={onGetClipboard} />
+        <ToolButton icon="📥" label="当前行" onClick={onGetCurrentLine} />
+        <ToolButton icon="🗑️" label="清空" onClick={handleClear} />
+        <ToolButton icon="🔄" label="重连" onClick={onReconnect} />
+      </div>
+
+      {/* 输入区域 - 放在底部，键盘弹出时可以滚动 */}
+      <div
+        style={{
+          background: 'var(--card)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '16px',
+          boxShadow: 'var(--shadow)',
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <textarea
+          ref={textareaRef}
+          value={currentText}
+          onChange={handleTextChange}
+          placeholder="在这里输入内容..."
+          style={{
+            width: '100%',
+            flex: 1,
+            minHeight: '100px',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            padding: '12px',
+            fontSize: '16px',
+            resize: 'none',
+            outline: 'none',
+            fontFamily: 'inherit',
+            transition: 'border-color 0.2s',
+          }}
+          onFocus={(e) => (e.target.style.borderColor = 'var(--primary)')}
+          onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+        />
+        <div
+          style={{
+            textAlign: 'right',
+            fontSize: '12px',
+            color: 'var(--text-secondary)',
+            marginTop: '8px',
+          }}
+        >
+          {currentText.length} 字
+        </div>
       </div>
     </div>
   );

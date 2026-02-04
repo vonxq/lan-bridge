@@ -59,10 +59,13 @@ export function ServerPage() {
     }
   }, []);
 
-  // WebSocket 连接（服务端使用本地连接）
+  // WebSocket 连接（服务端使用 server_token）
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}?local=true&server=true`;
+    // 从 window 或 URL 获取 server_token
+    const serverToken = (window as { SERVER_TOKEN?: string }).SERVER_TOKEN || 
+      new URLSearchParams(window.location.search).get('server_token') || '';
+    const wsUrl = `${protocol}//${window.location.host}?server_token=${serverToken}`;
     
     const ws = new WebSocket(wsUrl);
     
@@ -242,35 +245,47 @@ export function ServerPage() {
     <div
       style={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        padding: '20px',
+        background: 'linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%)',
+        padding: 'var(--space-6)',
       }}
     >
       <div
         style={{
-          maxWidth: '800px',
+          maxWidth: '900px',
           margin: '0 auto',
+          animation: 'fadeIn var(--transition-slow) ease',
         }}
       >
         {/* 标题 */}
         <div
           style={{
             textAlign: 'center',
-            marginBottom: '20px',
+            marginBottom: 'var(--space-6)',
             color: 'white',
           }}
         >
-          <h1 style={{ fontSize: '32px', marginBottom: '8px' }}>🌉 LAN Bridge</h1>
-          <p style={{ opacity: 0.8 }}>内网桥接工具 - 服务端控制台</p>
+          <h1 
+            style={{ 
+              fontSize: 'var(--text-3xl)', 
+              fontWeight: 700,
+              marginBottom: 'var(--space-2)',
+              textShadow: '0 2px 10px rgba(0,0,0,0.2)',
+            }}
+          >
+            🌉 LAN Bridge
+          </h1>
+          <p style={{ opacity: 0.9, fontSize: 'var(--text-base)' }}>
+            内网桥接工具 - 服务端控制台
+          </p>
         </div>
 
         {/* 主卡片 */}
         <div
           style={{
-            background: 'white',
-            borderRadius: '24px',
-            padding: '24px',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+            background: 'var(--card)',
+            borderRadius: 'var(--radius-2xl)',
+            padding: 'var(--space-6)',
+            boxShadow: 'var(--shadow-xl)',
           }}
         >
           {/* 状态栏 */}
@@ -279,32 +294,37 @@ export function ServerPage() {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: '20px',
-              padding: '12px 16px',
-              background: '#f8f9fa',
-              borderRadius: '12px',
+              marginBottom: 'var(--space-5)',
+              padding: 'var(--space-4)',
+              background: 'var(--bg)',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow: 'var(--shadow-sm)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
               <div
                 style={{
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  background: wsConnected ? '#34C759' : '#FF3B30',
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: 'var(--radius-full)',
+                  background: wsConnected ? 'var(--success)' : 'var(--danger)',
                   animation: wsConnected ? 'pulse 2s infinite' : 'none',
+                  boxShadow: wsConnected 
+                    ? '0 0 8px rgba(16, 185, 129, 0.5)' 
+                    : '0 0 8px rgba(239, 68, 68, 0.5)',
                 }}
               />
-              <span style={{ fontSize: '14px', color: '#666' }}>
+              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', fontWeight: 500 }}>
                 {wsConnected ? '服务运行中' : '连接中...'}
               </span>
               <span
                 style={{
-                  fontSize: '12px',
-                  padding: '2px 8px',
-                  background: '#e8f5e9',
-                  borderRadius: '10px',
-                  color: '#2e7d32',
+                  fontSize: 'var(--text-xs)',
+                  padding: 'var(--space-1) var(--space-3)',
+                  background: 'var(--success-light)',
+                  borderRadius: 'var(--radius-full)',
+                  color: 'var(--success)',
+                  fontWeight: 600,
                 }}
               >
                 {users.length} / {qrData?.maxConnections || 3} 连接
@@ -313,10 +333,22 @@ export function ServerPage() {
             <button
               onClick={() => setShowSettings(true)}
               style={{
-                background: 'none',
+                background: 'var(--card)',
                 border: 'none',
-                fontSize: '20px',
+                fontSize: '22px',
                 cursor: 'pointer',
+                padding: 'var(--space-2)',
+                borderRadius: 'var(--radius)',
+                boxShadow: 'var(--shadow)',
+                transition: 'all var(--transition)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.1)';
+                e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = 'var(--shadow)';
               }}
             >
               ⚙️
