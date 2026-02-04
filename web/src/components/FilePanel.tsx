@@ -165,6 +165,7 @@ export function FilePanel({ token, onRefresh, onDelete }: FilePanelProps) {
           ref={fileInputRef}
           type="file"
           multiple
+          accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.txt,.md"
           onChange={handleFileChange}
           style={{ display: 'none' }}
         />

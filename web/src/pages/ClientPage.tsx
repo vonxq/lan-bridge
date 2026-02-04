@@ -1,27 +1,37 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useAppStore } from '../stores/appStore';
 import { useTranslation } from '../i18n/I18nContext';
-import { Tabs, ToastContainer } from '../components/common';
+import { ToastContainer } from '../components/common';
 import { showToast } from '../components/common/Toast';
-import {
-  StatusBar,
-  TextPanel,
-  FilePanel,
-  ChatPanel,
-  ShortcutsPanel,
-  ConnectionList,
-  Settings,
-} from '../components';
-import type { Shortcut, ShortcutAction } from '../types';
+import { ToolBar } from '../components/ToolBar';
+import { ActionBar } from '../components/ActionBar';
+import { ChatView } from '../components/ChatView';
+import { OthersPage } from './OthersPage';
+import type { ChatMessage } from '../types';
 
 interface ClientPageProps {
   token: string;
+  onTokenInvalid?: () => void;
+  onRescan?: () => void;
 }
 
-export function ClientPage({ token }: ClientPageProps) {
-  const [showSettings, setShowSettings] = useState(false);
-  const { aiReplyEnabled, setSettings } = useAppStore();
+// 上传中的文件信息
+interface UploadingFile {
+  id: string;
+  filename: string;
+  progress: number;
+  type: 'image' | 'video' | 'file';
+}
+
+export function ClientPage({ token, onTokenInvalid, onRescan }: ClientPageProps) {
+  const [showOthers, setShowOthers] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const { currentText, setCurrentText, connectionStatus, aiReplyEnabled, addChatMessage, currentUser } = useAppStore();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const t = useTranslation();
 
   const {
@@ -36,209 +46,390 @@ export function ClientPage({ token }: ClientPageProps) {
     clearChat,
     connect,
     send,
-  } = useWebSocket({ token });
+  } = useWebSocket({ token, onTokenInvalid });
 
-  // 初始加载文件列表
+  const isConnected = connectionStatus === 'connected';
+
+  // 添加操作记录到聊天
+  const logAction = useCallback((action: string, content: string) => {
+    const message: ChatMessage = {
+      id: Date.now().toString(),
+      userId: currentUser?.id || 'unknown',
+      userName: currentUser?.name || '我',
+      userAvatar: currentUser?.avatar || '👤',
+      role: 'user',
+      content: `[${action}] ${content}`,
+      timestamp: new Date().toISOString(),
+      time: new Date().toLocaleTimeString('zh-CN'),
+      messageType: 'action',
+    };
+    addChatMessage(message);
+  }, [addChatMessage, currentUser]);
+
+  // 初始加载
   useEffect(() => {
     getFiles();
   }, [getFiles]);
 
-  // 执行快捷方法
-  const executeShortcut = useCallback(async (shortcut: Shortcut) => {
-    if (shortcut.type !== 'action' || !shortcut.actions) return;
-
-    for (const action of shortcut.actions) {
-      await executeAction(action);
-    }
-  }, [paste, submit, getClipboard]);
-
-  const executeAction = async (action: ShortcutAction) => {
-    switch (action.type) {
-      case 'paste':
-        paste(action.aiReply || false);
-        break;
-      case 'enter':
-        submit(false);
-        break;
-      case 'wait':
-        await new Promise((resolve) => setTimeout(resolve, action.delay || 50));
-        break;
-      case 'clear':
-        useAppStore.getState().setCurrentText('');
-        break;
-      case 'clipboard':
-        getClipboard();
-        break;
-    }
+  // 处理文本变化
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const text = e.target.value;
+    setCurrentText(text);
+    syncText(text);
   };
 
-  // 处理设置保存
-  const handleSettingsSave = (settings: { maxConnections: number }) => {
-    setSettings(settings);
-    send({ type: 'settings_update', settings, timestamp: Date.now() });
-    showToast(t('settings.saveSuccess'), 'success');
+  // 清空文本
+  const handleClear = () => {
+    setCurrentText('');
+    syncText('');
+    logAction('清空', '已清空输入框');
   };
 
-  // 处理踢出用户
-  const handleKickUser = (userId: string) => {
-    if (confirm(t('connectionList.kickConfirm'))) {
-      send({ type: 'kick_user', userId, timestamp: Date.now() });
-    }
+  // 包装操作函数，添加日志记录
+  const handlePaste = () => {
+    paste(aiReplyEnabled);
+    logAction('粘贴', currentText.substring(0, 50) + (currentText.length > 50 ? '...' : ''));
   };
 
-  // 处理查看历史
-  const handleViewHistory = (userId: string) => {
-    useAppStore.getState().setSelectedUserId(userId);
-    // 切换到聊天记录 tab
+  const handleReplace = () => {
+    replaceLine();
+    logAction('替换', currentText.substring(0, 50) + (currentText.length > 50 ? '...' : ''));
   };
 
-  const tabs = [
-    {
-      id: 'text',
-      label: t('tabs.text'),
-      icon: '📝',
-      content: (
-        <TextPanel
-          onSync={syncText}
-          onPaste={() => paste(aiReplyEnabled)}
-          onReplace={replaceLine}
-          onSubmit={() => submit(aiReplyEnabled)}
-          onGetClipboard={getClipboard}
-          onGetCurrentLine={getCurrentLine}
-          onReconnect={connect}
-        />
-      ),
-    },
-    {
-      id: 'shortcuts',
-      label: t('tabs.shortcuts'),
-      icon: '⚡',
-      content: <ShortcutsPanel onExecute={executeShortcut} />,
-    },
-    {
-      id: 'files',
-      label: t('tabs.files'),
-      icon: '📁',
-      content: (
-        <FilePanel
-          token={token}
-          onRefresh={getFiles}
-          onDelete={deleteFile}
-        />
-      ),
-    },
-    {
-      id: 'chat',
-      label: t('tabs.chat'),
-      icon: '💬',
-      content: <ChatPanel onClear={clearChat} />,
-    },
-    {
-      id: 'connections',
-      label: t('tabs.connections'),
-      icon: '👥',
-      content: (
-        <ConnectionList
-          onKickUser={handleKickUser}
-          onViewHistory={handleViewHistory}
-        />
-      ),
-    },
-  ];
+  const handleSubmit = () => {
+    submit(aiReplyEnabled);
+    // submit 已经在 useWebSocket 中添加了消息
+  };
 
-  // 处理在 Finder 中打开文件
-  const handleOpenInFinder = async (filename: string, category: string) => {
+  const handleGetClipboard = () => {
+    getClipboard();
+    logAction('获取剪贴板', '请求中...');
+  };
+
+  const handleGetCurrentLine = () => {
+    getCurrentLine();
+    logAction('获取当前行', '请求中...');
+  };
+
+  const handleReconnect = () => {
+    connect();
+    logAction('重连', '正在重新连接...');
+  };
+
+  // 上传文件
+  const uploadFile = useCallback(async (file: File, type: 'image' | 'video' | 'file') => {
+    const uploadId = Date.now().toString();
+    
+    // 立即添加到上传列表（显示进度条）
+    setUploadingFiles(prev => [...prev, {
+      id: uploadId,
+      filename: file.name,
+      progress: 0,
+      type,
+    }]);
+
+    // 添加上传开始消息到聊天
+    const uploadMessage: ChatMessage = {
+      id: uploadId,
+      userId: currentUser?.id || 'unknown',
+      userName: currentUser?.name || '我',
+      userAvatar: currentUser?.avatar || '👤',
+      role: 'user',
+      content: `正在上传: ${file.name}`,
+      timestamp: new Date().toISOString(),
+      time: new Date().toLocaleTimeString('zh-CN'),
+      messageType: type,
+      file: {
+        filename: file.name,
+        size: file.size,
+        category: type === 'image' ? 'images' : type === 'video' ? 'videos' : 'files',
+        uploadTime: new Date().toISOString(),
+      },
+      uploadProgress: 0,
+    };
+    addChatMessage(uploadMessage);
+
+    const formData = new FormData();
+    formData.append('files', file);
+
     try {
-      const res = await fetch('/api/open-in-finder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, category }),
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const progress = Math.round((e.loaded / e.total) * 100);
+          setUploadingFiles(prev => 
+            prev.map(f => f.id === uploadId ? { ...f, progress } : f)
+          );
+        }
       });
-      if (!res.ok) {
-        const data = await res.json();
-        showToast(data.error || '打开失败', 'error');
-      }
-    } catch (e) {
-      showToast('打开失败', 'error');
+
+      xhr.addEventListener('load', () => {
+        setUploadingFiles(prev => prev.filter(f => f.id !== uploadId));
+        if (xhr.status === 200) {
+          showToast(`上传成功: ${file.name}`, 'success');
+          getFiles();
+        } else {
+          showToast('上传失败', 'error');
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        setUploadingFiles(prev => prev.filter(f => f.id !== uploadId));
+        showToast('上传失败', 'error');
+      });
+
+      xhr.open('POST', `/api/upload?token=${token}`);
+      xhr.send(formData);
+    } catch {
+      setUploadingFiles(prev => prev.filter(f => f.id !== uploadId));
+      showToast('上传失败', 'error');
+    }
+  }, [token, currentUser, addChatMessage, getFiles]);
+
+  // 处理文件选择
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'file') => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      Array.from(files).forEach(file => uploadFile(file, type));
+      e.target.value = '';
     }
   };
+
+  // 如果显示 Others 页面
+  if (showOthers) {
+    return (
+      <OthersPage
+        token={token}
+        onBack={() => setShowOthers(false)}
+        onClearChat={clearChat}
+        onDeleteFile={deleteFile}
+        onRefreshFiles={getFiles}
+        send={send}
+      />
+    );
+  }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: 'linear-gradient(180deg, var(--bg) 0%, var(--bg-secondary) 100%)',
-        padding: 'var(--space-4)',
-        paddingTop: 'max(var(--space-4), env(safe-area-inset-top))',
-        paddingBottom: 'max(var(--space-4), env(safe-area-inset-bottom))',
-      }}
-    >
-      <div 
-        style={{ 
-          maxWidth: '500px', 
-          margin: '0 auto',
-          animation: 'fadeIn var(--transition-slow) ease',
-        }}
-      >
-        {/* 标题卡片 */}
-        <div 
-          style={{ 
-            textAlign: 'center', 
-            marginBottom: 'var(--space-4)',
-            padding: 'var(--space-4)',
-            background: 'var(--card)',
-            borderRadius: 'var(--radius-xl)',
-            boxShadow: 'var(--shadow-soft)',
-          }}
-        >
-          <h1 
-            style={{ 
-              fontSize: 'var(--text-2xl)', 
-              fontWeight: 700,
+    <div className="page-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      {/* 状态栏 */}
+      <div className="status-bar" style={{ flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <div className={`connection-dot ${isConnected ? 'connected' : 'disconnected'}`} />
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+            {isConnected ? t('statusBar.connected') : t('statusBar.disconnected')}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <span
+            style={{
+              fontSize: 'var(--text-lg)',
               background: 'linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              marginBottom: 'var(--space-1)',
+              fontWeight: 700,
             }}
           >
-            🌉 {t('app.title')}
-          </h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-            {t('app.subtitle')}
-          </p>
-        </div>
-
-        {/* 状态栏 */}
-        <StatusBar onSettingsClick={() => setShowSettings(true)} />
-
-        {/* Tab 内容 */}
-        <div
-          style={{
-            background: 'var(--card)',
-            borderRadius: 'var(--radius-xl)',
-            boxShadow: 'var(--shadow-soft)',
-            padding: 'var(--space-4)',
-            marginTop: 'var(--space-4)',
-          }}
-        >
-          <Tabs 
-            tabs={tabs.map(t => 
-              t.id === 'chat' 
-                ? { ...t, content: <ChatPanel onClear={clearChat} onOpenInFinder={handleOpenInFinder} /> }
-                : t
-            )} 
-            defaultTab="text" 
-          />
+            🌉 LAN Bridge
+          </span>
+          {/* 扫码重连按钮 */}
+          <button
+            onClick={onRescan}
+            style={{
+              padding: 'var(--space-1) var(--space-2)',
+              background: 'var(--bg)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              fontSize: 'var(--text-xs)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-1)',
+            }}
+            title="扫码重连"
+          >
+            📷
+          </button>
         </div>
       </div>
 
-      {/* 设置模态框 */}
-      <Settings
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        onSave={handleSettingsSave}
+      {/* 工具栏 */}
+      <ToolBar
+        onGetClipboard={handleGetClipboard}
+        onGetCurrentLine={handleGetCurrentLine}
+        onReconnect={handleReconnect}
+        onClear={handleClear}
+        onMore={() => setShowOthers(true)}
+        disabled={!isConnected}
       />
+
+      {/* 操作按钮 */}
+      <ActionBar
+        onPaste={handlePaste}
+        onReplace={handleReplace}
+        onSubmit={handleSubmit}
+        disabled={!isConnected}
+      />
+
+      {/* 上传按钮行 */}
+      <div style={{
+        flexShrink: 0, 
+        display: 'flex', 
+        gap: 'var(--space-2)', 
+        padding: 'var(--space-2) 0',
+      }}>
+        <button
+          onClick={() => imageInputRef.current?.click()}
+          disabled={!isConnected}
+          style={{
+            flex: 1,
+            padding: 'var(--space-2)',
+            background: 'var(--card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            fontSize: 'var(--text-sm)',
+            cursor: isConnected ? 'pointer' : 'not-allowed',
+            opacity: isConnected ? 1 : 0.5,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 'var(--space-1)',
+          }}
+        >
+          🖼️ 图片
+        </button>
+        <button
+          onClick={() => videoInputRef.current?.click()}
+          disabled={!isConnected}
+          style={{
+            flex: 1,
+            padding: 'var(--space-2)',
+            background: 'var(--card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            fontSize: 'var(--text-sm)',
+            cursor: isConnected ? 'pointer' : 'not-allowed',
+            opacity: isConnected ? 1 : 0.5,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 'var(--space-1)',
+          }}
+        >
+          🎬 视频
+        </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!isConnected}
+          style={{
+            flex: 1,
+            padding: 'var(--space-2)',
+            background: 'var(--card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            fontSize: 'var(--text-sm)',
+            cursor: isConnected ? 'pointer' : 'not-allowed',
+            opacity: isConnected ? 1 : 0.5,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 'var(--space-1)',
+          }}
+        >
+          📎 文件
+        </button>
+        {/* 隐藏的文件输入 */}
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => handleFileSelect(e, 'image')}
+          style={{ display: 'none' }}
+        />
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/*"
+          multiple
+          onChange={(e) => handleFileSelect(e, 'video')}
+          style={{ display: 'none' }}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          onChange={(e) => handleFileSelect(e, 'file')}
+          style={{ display: 'none' }}
+        />
+      </div>
+
+      {/* 聊天记录 - 可滚动区域 */}
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <ChatView />
+      </div>
+
+      {/* 输入框 */}
+      <div style={{ padding: 'var(--space-2) 0', flexShrink: 0 }}>
+        <textarea
+          ref={textareaRef}
+          value={currentText}
+          onChange={handleTextChange}
+          placeholder={t('textPanel.placeholder')}
+          className="message-input"
+          rows={3}
+          style={{
+            width: '100%',
+            minHeight: '80px',
+            maxHeight: '150px',
+          }}
+        />
+        <div
+          style={{
+            textAlign: 'right',
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text-tertiary)',
+            marginTop: 'var(--space-1)',
+          }}
+        >
+          {t('textPanel.charCount', { count: currentText.length })}
+        </div>
+      </div>
+
+      {/* 上传进度条 */}
+      {uploadingFiles.length > 0 && (
+        <div style={{ marginBottom: 'var(--space-2)', flexShrink: 0 }}>
+          {uploadingFiles.map(file => (
+            <div
+              key={file.id}
+              style={{
+                padding: 'var(--space-2)',
+                background: 'var(--card)',
+                borderRadius: 'var(--radius)',
+                marginBottom: 'var(--space-1)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-1)' }}>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                  {file.type === 'image' ? '🖼️' : file.type === 'video' ? '🎬' : '📎'} {file.filename}
+                </span>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--primary)' }}>{file.progress}%</span>
+              </div>
+              <div style={{ height: '4px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${file.progress}%`,
+                    background: 'var(--primary)',
+                    transition: 'width 0.2s',
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
 
       {/* Toast 容器 */}
       <ToastContainer />

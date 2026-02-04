@@ -22,6 +22,8 @@ export default {
     connecting: '连接中...',
     disconnected: '未连接',
     connectionError: '连接错误',
+    more: '更多',
+    back: '返回',
   },
 
   // 应用标题
@@ -47,6 +49,8 @@ export default {
     aiReply: 'AI回复',
     usersOnline: '{count} 在线',
     serviceRunning: '服务运行中',
+    connected: '已连接',
+    disconnected: '未连接',
   },
 
   // Tab 标签

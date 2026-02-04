@@ -46,6 +46,21 @@ export function TextPanel({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* 工具栏 */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: '8px',
+          marginBottom: '12px',
+          flexShrink: 0,
+        }}
+      >
+        <ToolButton icon="📋" label={t('textPanel.clipboard')} onClick={onGetClipboard} />
+        <ToolButton icon="📥" label={t('textPanel.currentLine')} onClick={onGetCurrentLine} />
+        <ToolButton icon="🗑️" label={t('textPanel.clear')} onClick={handleClear} />
+        <ToolButton icon="🔄" label={t('textPanel.reconnect')} onClick={onReconnect} />
+      </div>
       {/* 操作按钮 - 移到最上方，键盘弹出时不会被遮挡 */}
       <div
         style={{
@@ -83,22 +98,6 @@ export function TextPanel({
         >
           🚀 {t('textPanel.submit')}
         </Button>
-      </div>
-
-      {/* 工具栏 */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: '8px',
-          marginBottom: '12px',
-          flexShrink: 0,
-        }}
-      >
-        <ToolButton icon="📋" label={t('textPanel.clipboard')} onClick={onGetClipboard} />
-        <ToolButton icon="📥" label={t('textPanel.currentLine')} onClick={onGetCurrentLine} />
-        <ToolButton icon="🗑️" label={t('textPanel.clear')} onClick={handleClear} />
-        <ToolButton icon="🔄" label={t('textPanel.reconnect')} onClick={onReconnect} />
       </div>
 
       {/* 输入区域 - 放在底部，键盘弹出时可以滚动 */}

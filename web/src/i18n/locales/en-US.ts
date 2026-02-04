@@ -22,6 +22,8 @@ export default {
     connecting: 'Connecting...',
     disconnected: 'Disconnected',
     connectionError: 'Connection Error',
+    more: 'More',
+    back: 'Back',
   },
 
   // App Title
@@ -47,6 +49,8 @@ export default {
     aiReply: 'AI Reply',
     usersOnline: '{count} online',
     serviceRunning: 'Service Running',
+    connected: 'Connected',
+    disconnected: 'Disconnected',
   },
 
   // Tab Labels

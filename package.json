@@ -4,7 +4,7 @@
   "description": "内网桥接工具 - 文本同步、文件传输、剪贴板操作、用户管理、快捷方法",
   "main": "server.js",
   "bin": {
-    "lan-bridge": "./bin/lan-bridge.js"
+    "lan-bridge": "./cli.js"
   },
   "scripts": {
     "start": "node server.js",

@@ -38,14 +38,17 @@ export interface ChatMessage {
   timestamp: string;
   time: string;
   // 文件相关字段
-  messageType?: 'text' | 'file' | 'image' | 'video';
+  messageType?: 'text' | 'file' | 'image' | 'video' | 'action';
   file?: {
     filename: string;
     category: 'files' | 'images' | 'videos';
     size: number;
-    mimeType: string;
+    mimeType?: string;
     url?: string;
+    uploadTime?: string;
   };
+  // 上传进度
+  uploadProgress?: number;
 }
 
 // 文件信息

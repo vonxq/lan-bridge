@@ -6,9 +6,10 @@ import type { WSMessage, ChatMessage, User, FileInfo, UserActivity } from '../ty
 interface UseWebSocketOptions {
   token: string;
   onMessage?: (message: WSMessage) => void;
+  onTokenInvalid?: () => void;
 }
 
-export function useWebSocket({ token, onMessage }: UseWebSocketOptions) {
+export function useWebSocket({ token, onMessage, onTokenInvalid }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number>();
 
@@ -26,13 +27,38 @@ export function useWebSocket({ token, onMessage }: UseWebSocketOptions) {
     currentText,
   } = useAppStore();
 
+  // 获取或生成设备 ID
+  const getDeviceId = useCallback(() => {
+    const DEVICE_ID_KEY = 'lan-bridge-device-id';
+    let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+    if (!deviceId) {
+      // 基于浏览器特征生成设备 ID
+      const ua = navigator.userAgent;
+      const screen = `${window.screen.width}x${window.screen.height}`;
+      const lang = navigator.language;
+      const platform = navigator.platform;
+      const raw = `${ua}|${screen}|${lang}|${platform}|${Date.now()}`;
+      // 简单哈希
+      let hash = 0;
+      for (let i = 0; i < raw.length; i++) {
+        const char = raw.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      deviceId = Math.abs(hash).toString(36);
+      localStorage.setItem(DEVICE_ID_KEY, deviceId);
+    }
+    return deviceId;
+  }, []);
+
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       return;
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}?token=${token}`;
+    const deviceId = getDeviceId();
+    const wsUrl = `${protocol}//${window.location.host}?token=${token}&device_id=${deviceId}`;
 
     setConnectionStatus('connecting');
     const ws = new WebSocket(wsUrl);
@@ -43,8 +69,13 @@ export function useWebSocket({ token, onMessage }: UseWebSocketOptions) {
       showToast('连接成功', 'success');
     };
 
-    ws.onclose = () => {
+    ws.onclose = (e) => {
       setConnectionStatus('disconnected');
+      // 4001 是未授权关闭码，token 无效
+      if (e.code === 4001) {
+        onTokenInvalid?.();
+        return;
+      }
       // 3秒后自动重连
       reconnectTimeoutRef.current = window.setTimeout(connect, 3000);
     };
@@ -63,7 +94,7 @@ export function useWebSocket({ token, onMessage }: UseWebSocketOptions) {
         console.error('解析消息失败:', e);
       }
     };
-  }, [token, onMessage, setConnectionStatus]);
+  }, [token, onMessage, onTokenInvalid, setConnectionStatus]);
 
   const handleMessage = useCallback((data: WSMessage) => {
     switch (data.type) {
@@ -100,6 +131,38 @@ export function useWebSocket({ token, onMessage }: UseWebSocketOptions) {
 
       case 'chat_history':
         setChatMessages((data.messages as ChatMessage[]) || []);
+        break;
+
+      case 'new_chat_message':
+        // 接收服务端发送的消息
+        console.log('[DEBUG] 客户端收到 new_chat_message:', {
+          type: data.type,
+          hasMessage: !!data.message,
+          message: data.message ? {
+            id: (data.message as ChatMessage).id,
+            role: (data.message as ChatMessage).role,
+            messageType: (data.message as ChatMessage).messageType || 'text',
+            hasFile: !!(data.message as ChatMessage).file,
+            content: (data.message as ChatMessage).content?.substring(0, 50),
+          } : null,
+        });
+        if (data.message) {
+          const msg = data.message as ChatMessage;
+          console.log('[DEBUG] 客户端添加消息详情:', JSON.stringify(msg, null, 2));
+          // 确保消息有必要的字段
+          const fullMsg: ChatMessage = {
+            ...msg,
+            userId: msg.userId || (msg.role === 'ai' ? 'ai' : 'unknown'),
+            userName: msg.userName || (msg.role === 'ai' ? 'AI' : '未知'),
+            userAvatar: msg.userAvatar || (msg.role === 'ai' ? '🤖' : '👤'),
+            timestamp: msg.timestamp || new Date().toISOString(),
+            time: msg.time || new Date().toLocaleTimeString('zh-CN'),
+          };
+          addChatMessage(fullMsg);
+          showToast('收到新消息', 'info');
+        } else {
+          console.warn('[DEBUG] 客户端收到 new_chat_message 但没有 message 字段');
+        }
         break;
 
       case 'file_list':
