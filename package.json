@@ -1,0 +1,37 @@
+{
+  "name": "lan-bridge",
+  "version": "1.0.0",
+  "description": "内网桥接工具 - 文本同步、文件传输、剪贴板操作",
+  "main": "server.js",
+  "bin": {
+    "lan-bridge": "./bin/lan-bridge.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "lan",
+    "bridge",
+    "file-transfer",
+    "clipboard",
+    "qrcode",
+    "内网",
+    "文件传输"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "mime-types": "^2.1.35",
+    "qrcode": "^1.5.3",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.16.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vonxq/lan-bridge.git"
+  }
+}
