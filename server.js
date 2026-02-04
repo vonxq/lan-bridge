@@ -704,22 +704,43 @@ function setupWebSocket(server) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const token = url.searchParams.get('token');
     const isLocal = url.searchParams.get('local') === 'true';
+    const isServerView = url.searchParams.get('server') === 'true';
     
-    // 本地连接检查
+    // 本地连接检查（只有 localhost 才算本地）
     const clientIP = req.socket.remoteAddress;
-    const isLocalConnection = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(clientIP) ||
-                              clientIP?.includes('192.168.') ||
-                              clientIP?.includes('10.') ||
-                              clientIP?.includes('172.');
+    const isLocalhost = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(clientIP);
     
-    // Token 验证
-    if (!auth.validateToken(token) && !(isLocal && isLocalConnection)) {
+    // Token 验证：服务端视图或本地工具可以免验证
+    const bypassAuth = isLocalhost && (isLocal || isServerView);
+    
+    if (!auth.validateToken(token) && !bypassAuth) {
       console.log('\n❌ WebSocket 连接被拒绝: 无效的 token\n');
       ws.close(4001, '未授权');
       return;
     }
     
-    // 添加用户
+    // 服务端连接不占用用户名额
+    if (isServerView && isLocalhost) {
+      clients.add(ws);
+      ws.isServerView = true;
+      console.log('\n✅ 服务端控制台已连接\n');
+      
+      // 发送当前用户列表
+      broadcastUserList();
+      
+      ws.on('message', (data) => {
+        handleMessage(ws, data);
+      });
+      
+      ws.on('close', () => {
+        clients.delete(ws);
+        console.log('\n📤 服务端控制台已断开\n');
+      });
+      
+      return;
+    }
+    
+    // 添加普通用户
     const result = userManager.addUser(ws, token);
     if (result.error) {
       console.log(`\n❌ 连接被拒绝: ${result.error}\n`);
