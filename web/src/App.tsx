@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { QRCodePage } from './pages/QRCodePage';
+import { ServerPage } from './pages/ServerPage';
 import { ClientPage } from './pages/ClientPage';
 
 // 从 window 获取注入的 token
@@ -42,7 +42,8 @@ function App() {
     );
   }
 
-  return isServerView ? <QRCodePage /> : <ClientPage token={authToken} />;
+  // 服务端显示完整管理界面，客户端显示操作界面
+  return isServerView ? <ServerPage /> : <ClientPage token={authToken} />;
 }
 
 export default App;

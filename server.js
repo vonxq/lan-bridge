@@ -374,8 +374,12 @@ function createHttpServer() {
       return;
     }
     
-    // 以下 API 需要 token 验证
-    if (!auth.validateRequest(req)) {
+    // 检查是否是本地请求（服务端控制台）
+    const clientIP = req.socket.remoteAddress;
+    const isLocalRequest = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(clientIP);
+    
+    // 以下 API 需要 token 验证（本地请求除外）
+    if (!isLocalRequest && !auth.validateRequest(req)) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: '未授权访问' }));
       return;
@@ -477,6 +481,61 @@ function createHttpServer() {
       const messages = chatStore.getRecentMessages(limit);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ messages }));
+      return;
+    }
+    
+    // API: 踢出用户（服务端使用）
+    if (pathname === '/api/kick-user' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const { userId } = JSON.parse(body);
+          const kickedUser = userManager.kickUser(userId);
+          if (kickedUser) {
+            broadcast({ type: 'user_kicked', userId, userName: kickedUser.name });
+            broadcastUserList();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true }));
+          } else {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: '用户不存在' }));
+          }
+        } catch (error) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: error.message }));
+        }
+      });
+      return;
+    }
+    
+    // API: 清空聊天（服务端使用）
+    if (pathname === '/api/clear-chat' && req.method === 'POST') {
+      chatStore.clearTodayMessages();
+      broadcast({ type: 'chat_cleared' });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+      return;
+    }
+    
+    // API: 更新设置（服务端使用）
+    if (pathname === '/api/settings' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const settings = JSON.parse(body);
+          if (settings.maxConnections) {
+            userManager.setMaxConnections(settings.maxConnections);
+          }
+          broadcast({ type: 'settings_changed', settings });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true }));
+        } catch (error) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: error.message }));
+        }
+      });
       return;
     }
     
@@ -587,10 +646,34 @@ async function serveQRCodePage(res) {
   }
 }
 
+// 自动打开浏览器
+function openBrowser(url) {
+  const { exec } = require('child_process');
+  
+  let command;
+  switch (process.platform) {
+    case 'darwin':
+      command = `open "${url}"`;
+      break;
+    case 'win32':
+      command = `start "" "${url}"`;
+      break;
+    default:
+      command = `xdg-open "${url}"`;
+  }
+  
+  exec(command, (err) => {
+    if (err) {
+      console.log(`💡 请手动打开浏览器访问: ${url}`);
+    }
+  });
+}
+
 // 显示启动信息
 function showStartupInfo(ip, port) {
   const secureUrl = auth.generateSecureUrl(`http://${ip}:${port}`);
   const webUrl = `http://${ip}:${port}`;
+  const localUrl = `http://localhost:${port}`;
   
   console.log('\n');
   console.log('╔═══════════════════════════════════════════════════╗');
@@ -598,15 +681,19 @@ function showStartupInfo(ip, port) {
   console.log('║    文本同步 | 文件传输 | 用户管理 | 快捷方法       ║');
   console.log('╠═══════════════════════════════════════════════════╣');
   console.log(`║  服务地址: ${webUrl.padEnd(38)}║`);
+  console.log(`║  本地地址: ${localUrl.padEnd(38)}║`);
   console.log(`║  最大连接: ${String(userManager.getMaxConnections()).padEnd(38)}║`);
   console.log(`║  数据目录: ~/Documents/lan-bridge/${''.padEnd(17)}║`);
   console.log('╚═══════════════════════════════════════════════════╝');
   console.log('\n📱 手机扫描下方二维码连接（含加密 token）:\n');
   qrcode.generate(secureUrl, { small: true });
-  console.log('\n💡 或在浏览器打开上述地址查看二维码页面');
-  console.log(`📤 发送AI回复: node send-reply.js "内容"${port !== 9527 ? ` --port=${port}` : ''}`);
+  console.log(`\n📤 发送AI回复: node send-reply.js "内容"${port !== 9527 ? ` --port=${port}` : ''}`);
   console.log('\n按 Ctrl+C 停止服务\n');
   console.log('─'.repeat(50));
+  
+  // 自动打开浏览器
+  console.log('\n🌐 正在打开服务端控制台...\n');
+  openBrowser(localUrl);
 }
 
 // 设置 WebSocket
