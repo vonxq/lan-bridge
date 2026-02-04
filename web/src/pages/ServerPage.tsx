@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Tabs, ToastContainer } from '../components/common';
 import { showToast } from '../components/common/Toast';
+import { useTranslation } from '../i18n/I18nContext';
 import { Settings } from '../components';
 import type { User, FileInfo, ChatMessage } from '../types';
 
@@ -19,6 +20,7 @@ export function ServerPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
+  const t = useTranslation();
 
   // 获取二维码数据
   const fetchQRCode = useCallback(async () => {
@@ -194,7 +196,7 @@ export function ServerPage() {
   const tabs = [
     {
       id: 'qrcode',
-      label: '二维码',
+      label: t('tabs.qrcode'),
       icon: '📱',
       content: (
         <QRCodePanel
@@ -205,7 +207,7 @@ export function ServerPage() {
     },
     {
       id: 'connections',
-      label: '连接',
+      label: t('tabs.connections'),
       icon: '👥',
       content: (
         <ServerConnectionList
@@ -217,7 +219,7 @@ export function ServerPage() {
     },
     {
       id: 'chat',
-      label: '聊天',
+      label: t('tabs.chat'),
       icon: '💬',
       content: (
         <ServerChatPanel
@@ -229,7 +231,7 @@ export function ServerPage() {
     },
     {
       id: 'files',
-      label: '文件',
+      label: t('tabs.files'),
       icon: '📁',
       content: (
         <ServerFilePanel
@@ -275,7 +277,7 @@ export function ServerPage() {
             🌉 LAN Bridge
           </h1>
           <p style={{ opacity: 0.9, fontSize: 'var(--text-base)' }}>
-            内网桥接工具 - 服务端控制台
+            {t('app.subtitle')} - {t('app.serverConsole')}
           </p>
         </div>
 
@@ -315,7 +317,7 @@ export function ServerPage() {
                 }}
               />
               <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                {wsConnected ? '服务运行中' : '连接中...'}
+                {wsConnected ? t('statusBar.serviceRunning') : t('common.connecting')}
               </span>
               <span
                 style={{
@@ -327,7 +329,7 @@ export function ServerPage() {
                   fontWeight: 600,
                 }}
               >
-                {users.length} / {qrData?.maxConnections || 3} 连接
+                {t('qrCodePanel.connections', { current: users.length, max: qrData?.maxConnections || 3 })}
               </span>
             </div>
             <button

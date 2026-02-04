@@ -1,4 +1,6 @@
 import { useAppStore } from '../stores/appStore';
+import { useI18n } from '../i18n/I18nContext';
+import type { Locale } from '../i18n';
 import { Modal, Button } from './common';
 
 interface SettingsProps {
@@ -9,6 +11,7 @@ interface SettingsProps {
 
 export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
   const { settings, setSettings } = useAppStore();
+  const { t, locale, setLocale, localeNames } = useI18n();
 
   const handleMaxConnectionsChange = (value: number) => {
     if (value >= 1 && value <= 10) {
@@ -25,17 +28,56 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="⚙️ 设置"
+      title={`⚙️ ${t('settings.title')}`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            取消
+            {t('common.cancel')}
           </Button>
-          <Button onClick={handleSave}>保存</Button>
+          <Button onClick={handleSave}>{t('common.save')}</Button>
         </>
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        {/* 语言设置 */}
+        <div>
+          <label
+            style={{
+              display: 'block',
+              marginBottom: '8px',
+              fontSize: '14px',
+              fontWeight: 500,
+            }}
+          >
+            🌐 {t('settings.language')}
+          </label>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {(Object.keys(localeNames) as Locale[]).map((loc) => (
+              <button
+                key={loc}
+                onClick={() => setLocale(loc)}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  border: 'none',
+                  background: locale === loc 
+                    ? 'linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%)' 
+                    : 'var(--bg)',
+                  color: locale === loc ? 'white' : 'var(--text)',
+                  borderRadius: 'var(--radius)',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: locale === loc ? 600 : 400,
+                  transition: 'all var(--transition)',
+                  boxShadow: locale === loc ? '0 4px 12px rgba(102, 126, 234, 0.3)' : 'none',
+                }}
+              >
+                {localeNames[loc]}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* 最大连接数 */}
         <div>
           <label
@@ -46,21 +88,22 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
               fontWeight: 500,
             }}
           >
-            最大连接数
+            👥 {t('settings.maxConnections')}
           </label>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
               onClick={() => handleMaxConnectionsChange(settings.maxConnections - 1)}
               disabled={settings.maxConnections <= 1}
               style={{
-                width: '40px',
-                height: '40px',
+                width: '44px',
+                height: '44px',
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
+                borderRadius: 'var(--radius)',
                 background: 'var(--card)',
                 cursor: settings.maxConnections <= 1 ? 'not-allowed' : 'pointer',
                 fontSize: '20px',
                 opacity: settings.maxConnections <= 1 ? 0.5 : 1,
+                transition: 'all var(--transition)',
               }}
             >
               -
@@ -75,7 +118,7 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
                 width: '80px',
                 padding: '10px',
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
+                borderRadius: 'var(--radius)',
                 fontSize: '18px',
                 textAlign: 'center',
                 outline: 'none',
@@ -85,28 +128,20 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
               onClick={() => handleMaxConnectionsChange(settings.maxConnections + 1)}
               disabled={settings.maxConnections >= 10}
               style={{
-                width: '40px',
-                height: '40px',
+                width: '44px',
+                height: '44px',
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
+                borderRadius: 'var(--radius)',
                 background: 'var(--card)',
                 cursor: settings.maxConnections >= 10 ? 'not-allowed' : 'pointer',
                 fontSize: '20px',
                 opacity: settings.maxConnections >= 10 ? 0.5 : 1,
+                transition: 'all var(--transition)',
               }}
             >
               +
             </button>
           </div>
-          <p
-            style={{
-              fontSize: '12px',
-              color: 'var(--text-secondary)',
-              marginTop: '8px',
-            }}
-          >
-            限制同时连接的设备数量（1-10）
-          </p>
         </div>
 
         {/* 主题设置 */}
@@ -119,7 +154,7 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
               fontWeight: 500,
             }}
           >
-            主题
+            🎨 {t('settings.theme')}
           </label>
           <div style={{ display: 'flex', gap: '8px' }}>
             {(['light', 'dark', 'auto'] as const).map((theme) => (
@@ -130,54 +165,24 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
                   flex: 1,
                   padding: '12px',
                   border: 'none',
-                  background: settings.theme === theme ? 'var(--primary)' : 'var(--bg)',
+                  background: settings.theme === theme 
+                    ? 'linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%)' 
+                    : 'var(--bg)',
                   color: settings.theme === theme ? 'white' : 'var(--text)',
-                  borderRadius: 'var(--radius-sm)',
+                  borderRadius: 'var(--radius)',
                   cursor: 'pointer',
                   fontSize: '13px',
+                  fontWeight: settings.theme === theme ? 600 : 400,
+                  transition: 'all var(--transition)',
+                  boxShadow: settings.theme === theme ? '0 4px 12px rgba(102, 126, 234, 0.3)' : 'none',
                 }}
               >
-                {theme === 'light' && '☀️ 浅色'}
-                {theme === 'dark' && '🌙 深色'}
-                {theme === 'auto' && '🔄 跟随系统'}
+                {theme === 'light' && `☀️ ${t('settings.themeLight')}`}
+                {theme === 'dark' && `🌙 ${t('settings.themeDark')}`}
+                {theme === 'auto' && `🔄 ${t('settings.themeAuto')}`}
               </button>
             ))}
           </div>
-        </div>
-
-        {/* 数据存储路径 */}
-        <div>
-          <label
-            style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontSize: '14px',
-              fontWeight: 500,
-            }}
-          >
-            数据存储
-          </label>
-          <div
-            style={{
-              padding: '12px',
-              background: 'var(--bg)',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: '13px',
-              fontFamily: 'monospace',
-              wordBreak: 'break-all',
-            }}
-          >
-            ~/Documents/lan-bridge/
-          </div>
-          <p
-            style={{
-              fontSize: '12px',
-              color: 'var(--text-secondary)',
-              marginTop: '8px',
-            }}
-          >
-            文件、图片、视频和聊天记录的存储位置
-          </p>
         </div>
 
         {/* 关于 */}
@@ -185,14 +190,14 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
           style={{
             padding: '16px',
             background: 'var(--bg)',
-            borderRadius: 'var(--radius)',
+            borderRadius: 'var(--radius-lg)',
             textAlign: 'center',
           }}
         >
           <div style={{ fontSize: '32px', marginBottom: '8px' }}>🌉</div>
-          <div style={{ fontWeight: 600, marginBottom: '4px' }}>LAN Bridge v2.0</div>
+          <div style={{ fontWeight: 600, marginBottom: '4px' }}>{t('app.title')} v2.0</div>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-            内网桥接工具 - 文本同步 | 文件传输 | 剪贴板操作
+            {t('app.subtitle')}
           </div>
         </div>
       </div>

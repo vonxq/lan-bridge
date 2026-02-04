@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useAppStore } from '../stores/appStore';
+import { useTranslation } from '../i18n/I18nContext';
 import { Tabs, ToastContainer } from '../components/common';
 import { showToast } from '../components/common/Toast';
 import {
@@ -21,6 +22,7 @@ interface ClientPageProps {
 export function ClientPage({ token }: ClientPageProps) {
   const [showSettings, setShowSettings] = useState(false);
   const { aiReplyEnabled, setSettings } = useAppStore();
+  const t = useTranslation();
 
   const {
     syncText,
@@ -74,12 +76,12 @@ export function ClientPage({ token }: ClientPageProps) {
   const handleSettingsSave = (settings: { maxConnections: number }) => {
     setSettings(settings);
     send({ type: 'settings_update', settings, timestamp: Date.now() });
-    showToast('设置已保存', 'success');
+    showToast(t('settings.saveSuccess'), 'success');
   };
 
   // 处理踢出用户
   const handleKickUser = (userId: string) => {
-    if (confirm('确定踢出该用户？')) {
+    if (confirm(t('connectionList.kickConfirm'))) {
       send({ type: 'kick_user', userId, timestamp: Date.now() });
     }
   };
@@ -93,7 +95,7 @@ export function ClientPage({ token }: ClientPageProps) {
   const tabs = [
     {
       id: 'text',
-      label: '文本',
+      label: t('tabs.text'),
       icon: '📝',
       content: (
         <TextPanel
@@ -109,13 +111,13 @@ export function ClientPage({ token }: ClientPageProps) {
     },
     {
       id: 'shortcuts',
-      label: '快捷',
+      label: t('tabs.shortcuts'),
       icon: '⚡',
       content: <ShortcutsPanel onExecute={executeShortcut} />,
     },
     {
       id: 'files',
-      label: '文件',
+      label: t('tabs.files'),
       icon: '📁',
       content: (
         <FilePanel
@@ -127,13 +129,13 @@ export function ClientPage({ token }: ClientPageProps) {
     },
     {
       id: 'chat',
-      label: '记录',
+      label: t('tabs.chat'),
       icon: '💬',
       content: <ChatPanel onClear={clearChat} />,
     },
     {
       id: 'connections',
-      label: '连接',
+      label: t('tabs.connections'),
       icon: '👥',
       content: (
         <ConnectionList
@@ -200,10 +202,10 @@ export function ClientPage({ token }: ClientPageProps) {
               marginBottom: 'var(--space-1)',
             }}
           >
-            🌉 LAN Bridge
+            🌉 {t('app.title')}
           </h1>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-            内网桥接工具
+            {t('app.subtitle')}
           </p>
         </div>
 

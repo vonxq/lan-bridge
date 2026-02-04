@@ -345,7 +345,7 @@ function createHttpServer() {
         await serveServerPage(res, serverToken);
       } else {
         // 无有效 token，返回 403 页面
-        serve403Page(res);
+        serve403Page(res, req);
       }
       return;
     }
@@ -640,14 +640,36 @@ async function serveClientPage(res, token) {
   res.end(html);
 }
 
-// 403 禁止访问页面
-function serve403Page(res) {
+// 403 禁止访问页面（支持中英文）
+function serve403Page(res, req) {
+  // 检测浏览器语言
+  const acceptLang = req?.headers?.['accept-language'] || '';
+  const isZh = acceptLang.toLowerCase().startsWith('zh');
+  
+  const i18n = isZh ? {
+    title: '403 - 禁止访问',
+    message: '访问被拒绝',
+    description: '需要有效的授权令牌才能访问此页面',
+    howTo: '如何连接？',
+    step1: '在服务端电脑上启动 LAN Bridge',
+    step2: '使用手机扫描终端中的二维码',
+    step3: '或等待浏览器自动打开控制台',
+  } : {
+    title: '403 - Access Denied',
+    message: 'Access Denied',
+    description: 'A valid authorization token is required to access this page',
+    howTo: 'How to connect?',
+    step1: 'Start LAN Bridge on the server computer',
+    step2: 'Scan the QR code in the terminal with your phone',
+    step3: 'Or wait for the browser to open automatically',
+  };
+  
   const html = `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${isZh ? 'zh-CN' : 'en'}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>403 - 禁止访问</title>
+  <title>${i18n.title}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
@@ -695,12 +717,12 @@ function serve403Page(res) {
   <div class="container">
     <div class="icon">🔒</div>
     <h1>403</h1>
-    <p>访问被拒绝<br>需要有效的授权令牌才能访问此页面</p>
+    <p>${i18n.message}<br>${i18n.description}</p>
     <div class="tip">
-      <strong>如何连接？</strong><br><br>
-      1. 在服务端电脑上启动 LAN Bridge<br>
-      2. 使用手机扫描终端中的二维码<br>
-      3. 或等待浏览器自动打开控制台
+      <strong>${i18n.howTo}</strong><br><br>
+      1. ${i18n.step1}<br>
+      2. ${i18n.step2}<br>
+      3. ${i18n.step3}
     </div>
   </div>
 </body>

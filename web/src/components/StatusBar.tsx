@@ -1,4 +1,5 @@
 import { useAppStore } from '../stores/appStore';
+import { useTranslation } from '../i18n/I18nContext';
 
 interface StatusBarProps {
   onSettingsClick?: () => void;
@@ -6,15 +7,16 @@ interface StatusBarProps {
 
 export function StatusBar({ onSettingsClick }: StatusBarProps) {
   const { connectionStatus, aiReplyEnabled, setAiReplyEnabled, users, currentUser } = useAppStore();
+  const t = useTranslation();
 
   const statusConfig = {
-    connecting: { color: 'var(--warning)', text: '连接中...', shadow: '0 0 8px rgba(245, 158, 11, 0.5)' },
-    connected: { color: 'var(--success)', text: '已连接', shadow: '0 0 8px rgba(16, 185, 129, 0.5)' },
-    disconnected: { color: 'var(--danger)', text: '未连接', shadow: '0 0 8px rgba(239, 68, 68, 0.5)' },
-    error: { color: 'var(--danger)', text: '连接错误', shadow: '0 0 8px rgba(239, 68, 68, 0.5)' },
+    connecting: { color: 'var(--warning)', textKey: 'common.connecting', shadow: '0 0 8px rgba(245, 158, 11, 0.5)' },
+    connected: { color: 'var(--success)', textKey: 'common.connected', shadow: '0 0 8px rgba(16, 185, 129, 0.5)' },
+    disconnected: { color: 'var(--danger)', textKey: 'common.disconnected', shadow: '0 0 8px rgba(239, 68, 68, 0.5)' },
+    error: { color: 'var(--danger)', textKey: 'common.connectionError', shadow: '0 0 8px rgba(239, 68, 68, 0.5)' },
   };
 
-  const { color, text, shadow } = statusConfig[connectionStatus];
+  const { color, textKey, shadow } = statusConfig[connectionStatus];
 
   return (
     <div
@@ -44,7 +46,7 @@ export function StatusBar({ onSettingsClick }: StatusBarProps) {
             }}
           />
           <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', fontWeight: 500 }}>
-            {text}
+            {t(textKey)}
           </span>
         </div>
 
@@ -78,7 +80,7 @@ export function StatusBar({ onSettingsClick }: StatusBarProps) {
               fontWeight: 500,
             }}
           >
-            👥 {users.length} 在线
+            👥 {t('statusBar.usersOnline', { count: users.length })}
           </span>
         )}
       </div>

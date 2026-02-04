@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
+import { useTranslation } from '../i18n/I18nContext';
 import { Button } from './common';
 
 interface TextPanelProps {
@@ -23,6 +24,7 @@ export function TextPanel({
 }: TextPanelProps) {
   const { currentText, setCurrentText, connectionStatus } = useAppStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const t = useTranslation();
 
   const isConnected = connectionStatus === 'connected';
 
@@ -61,7 +63,7 @@ export function TextPanel({
           disabled={!isConnected}
           fullWidth
         >
-          📋 粘贴
+          📋 {t('textPanel.paste')}
         </Button>
         <Button
           variant="warning"
@@ -70,7 +72,7 @@ export function TextPanel({
           disabled={!isConnected}
           fullWidth
         >
-          🔄 替换
+          🔄 {t('textPanel.replace')}
         </Button>
         <Button
           variant="primary"
@@ -79,7 +81,7 @@ export function TextPanel({
           disabled={!isConnected}
           fullWidth
         >
-          🚀 发送
+          🚀 {t('textPanel.submit')}
         </Button>
       </div>
 
@@ -93,10 +95,10 @@ export function TextPanel({
           flexShrink: 0,
         }}
       >
-        <ToolButton icon="📋" label="剪贴板" onClick={onGetClipboard} />
-        <ToolButton icon="📥" label="当前行" onClick={onGetCurrentLine} />
-        <ToolButton icon="🗑️" label="清空" onClick={handleClear} />
-        <ToolButton icon="🔄" label="重连" onClick={onReconnect} />
+        <ToolButton icon="📋" label={t('textPanel.clipboard')} onClick={onGetClipboard} />
+        <ToolButton icon="📥" label={t('textPanel.currentLine')} onClick={onGetCurrentLine} />
+        <ToolButton icon="🗑️" label={t('textPanel.clear')} onClick={handleClear} />
+        <ToolButton icon="🔄" label={t('textPanel.reconnect')} onClick={onReconnect} />
       </div>
 
       {/* 输入区域 - 放在底部，键盘弹出时可以滚动 */}
@@ -115,7 +117,7 @@ export function TextPanel({
           ref={textareaRef}
           value={currentText}
           onChange={handleTextChange}
-          placeholder="在这里输入内容..."
+          placeholder={t('textPanel.placeholder')}
           style={{
             width: '100%',
             flex: 1,
@@ -140,7 +142,7 @@ export function TextPanel({
             marginTop: '8px',
           }}
         >
-          {currentText.length} 字
+          {t('textPanel.charCount', { count: currentText.length })}
         </div>
       </div>
     </div>

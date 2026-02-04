@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
+import { useTranslation } from '../i18n/I18nContext';
 import { Button } from './common';
 import type { ChatMessage } from '../types';
 
@@ -11,6 +12,7 @@ interface ChatPanelProps {
 export function ChatPanel({ onClear, onOpenInFinder }: ChatPanelProps) {
   const { chatMessages, users, selectedUserId, setSelectedUserId } = useAppStore();
   const listRef = useRef<HTMLDivElement>(null);
+  const t = useTranslation();
 
   // 过滤消息
   const filteredMessages = selectedUserId
@@ -25,7 +27,7 @@ export function ChatPanel({ onClear, onOpenInFinder }: ChatPanelProps) {
   }, [filteredMessages]);
 
   const handleClear = () => {
-    if (confirm('确定清空聊天记录？')) {
+    if (confirm(t('chatPanel.clearConfirm'))) {
       onClear();
     }
   };
@@ -54,7 +56,7 @@ export function ChatPanel({ onClear, onOpenInFinder }: ChatPanelProps) {
               cursor: 'pointer',
             }}
           >
-            全部
+            {t('chatPanel.allUsers')}
           </button>
           {users.map((user) => (
             <button
@@ -99,9 +101,9 @@ export function ChatPanel({ onClear, onOpenInFinder }: ChatPanelProps) {
             borderBottom: '1px solid var(--bg)',
           }}
         >
-          <span style={{ fontSize: '14px', fontWeight: 600 }}>💬 聊天记录</span>
+          <span style={{ fontSize: '14px', fontWeight: 600 }}>💬 {t('chatPanel.title')}</span>
           <Button size="sm" variant="danger" onClick={handleClear}>
-            清空
+            {t('common.clear')}
           </Button>
         </div>
 
@@ -122,7 +124,7 @@ export function ChatPanel({ onClear, onOpenInFinder }: ChatPanelProps) {
                 fontSize: '14px',
               }}
             >
-              暂无聊天记录
+              {t('chatPanel.noMessages')}
             </div>
           ) : (
             filteredMessages.map((message) => (
